@@ -1,415 +1,456 @@
 <template>
-  <div class="page-wrapper">
-    <AppHeader />
+  <WorkspaceShell
+    active="products"
+    :title="product?.name || '상품 상세'"
+    description="상품 정보와 현재 발주 상태를 확인합니다."
+  >
+    <div v-if="courseStore.loading" class="detail-loading">
+      <div class="spinner" aria-label="상품 정보 로딩 중"></div>
+    </div>
 
-    <div class="detail-layout" v-if="course">
-      <div class="detail-hero">
-        <div class="detail-hero-inner">
-          <!-- 좌측 상세 정보 -->
-          <div class="detail-info fade-in-up">
-            <span class="badge" :class="badgeClass">{{ displayCategory }}</span>
-            <h1 class="detail-title">{{ course.title }}</h1>
-            <p class="detail-desc">
-              {{ course.description || '실무 전문가가 직접 설계한 커리큘럼으로 체계적으로 학습하세요.' }}
-            </p>
+    <section v-else-if="courseStore.error || !product" class="detail-state surface" role="alert">
+      <span>상품 정보를 찾을 수 없습니다.</span>
+      <p>{{ courseStore.error }}</p>
+      <router-link to="/courses" class="btn btn-secondary">상품 목록으로</router-link>
+    </section>
 
-            <div class="detail-meta">
-              <span>강사: {{ displayInstructorName }}</span>
-              <span>수강생: {{ displayEnrollmentCount }}명</span>
-            </div>
-          </div>
-
-          <!-- 우측 결제/수강 카드 -->
-          <div class="enroll-card fade-in">
-            <div class="enroll-thumb" :class="thumbBg">
-              <img v-if="thumbSrc" :src="thumbSrc" :alt="course.title" />
-            </div>
-
-            <div class="enroll-body">
-              <div class="enroll-price">₩{{ displayPrice }}</div>
-
-              <button
-                class="btn btn-primary btn-full"
-                @click="handlePrimaryAction"
-                :disabled="buttonDisabled"
-                :class="{ 'btn-disabled': buttonDisabled }"
-              >
-                <span v-if="enrolling">처리 중...</span>
-                <span v-else>{{ buttonLabel }}</span>
-              </button>
-
-              <div v-if="enrollError" class="error-msg">{{ enrollError }}</div>
-
-              <p class="helper-text" v-if="helperText">
-                {{ helperText }}
-              </p>
-
-              <ul class="enroll-info-list">
-                <li>✅ 즉시 수강 가능</li>
-                <li>✅ 평생 소장</li>
-                <li>✅ 수료증 발급</li>
-              </ul>
-            </div>
-          </div>
+    <div v-else class="detail-layout enter">
+      <section class="product-stage surface">
+        <div class="category-tile" :class="`tone-${product.categoryTone}`" aria-hidden="true">
+          {{ product.categoryShort }}
         </div>
-      </div>
-    </div>
+        <div class="stage-content">
+          <span class="stage-category">{{ product.categoryLabel }}</span>
+          <h2>{{ product.name }}</h2>
+          <p>{{ product.description || '등록된 상품 설명이 없습니다.' }}</p>
+        </div>
+        <div class="stage-caption">
+          <span>{{ product.status === 'ACTIVE' ? '발주 가능' : '발주 중지' }}</span>
+          <small>상품 #{{ product.id }}</small>
+        </div>
+      </section>
 
-    <div v-else-if="loading" class="loading-center">
-      <div class="spinner"></div>
-    </div>
+      <aside class="order-panel surface">
+        <div class="price-row">
+          <span>공급가</span>
+          <strong>{{ formatMoney(product.supplyPrice) }}</strong>
+        </div>
 
-    <div v-else class="loading-center">
-      <p class="empty-text">강의 정보를 불러오지 못했습니다.</p>
+        <dl class="product-specs">
+          <div><dt>상품 ID</dt><dd>#{{ product.id }}</dd></div>
+          <div><dt>발주 단위</dt><dd>{{ product.orderUnit }}건</dd></div>
+          <div><dt>현재 재고</dt><dd>{{ product.inventory.toLocaleString() }}</dd></div>
+          <div><dt>상품 상태</dt><dd>{{ product.status === 'ACTIVE' ? '활성' : '중지' }}</dd></div>
+        </dl>
+
+        <template v-if="auth.isStore">
+          <div v-if="currentOrder" class="current-order">
+            <span>현재 발주 상태</span>
+            <StatusBadge :status="currentOrder.status" />
+          </div>
+          <button
+            type="button"
+            class="btn btn-primary order-button"
+            :disabled="actionDisabled"
+            @click="handleStoreAction"
+          >
+            {{ actionLoading ? '처리 중' : actionLabel }}
+          </button>
+          <p class="panel-helper">입고 완료 전까지 재고 수량은 증가하지 않습니다.</p>
+        </template>
+
+        <template v-else>
+          <router-link to="/enrollments" class="btn btn-primary order-button">발주 요청 관리</router-link>
+          <p class="panel-helper">본사 관리자는 발주 관리 화면에서 승인과 반려를 처리합니다.</p>
+        </template>
+
+        <p v-if="actionError" class="notice notice-error" role="alert">{{ actionError }}</p>
+        <p v-if="actionSuccess" class="notice notice-success">{{ actionSuccess }}</p>
+      </aside>
+
+      <section class="flow-panel surface">
+        <div class="flow-heading">
+          <span>발주 처리 순서</span>
+          <h2>발주 상태 흐름</h2>
+        </div>
+        <ol class="status-flow">
+          <li :class="{ reached: isReached('REQUESTED') }"><i></i><strong>발주 요청</strong><small>REQUESTED</small></li>
+          <li :class="{ reached: isReached('APPROVED') }"><i></i><strong>본사 승인</strong><small>APPROVED</small></li>
+          <li :class="{ reached: isReached('RECEIVED') }"><i></i><strong>입고 확인</strong><small>RECEIVED</small></li>
+        </ol>
+        <p class="reject-note">반려는 발주 요청 상태에서만 가능하며 REJECTED로 종료됩니다.</p>
+      </section>
     </div>
-  </div>
+  </WorkspaceShell>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import AppHeader from '@/components/AppHeader.vue'
-import { useCourseStore } from '@/store/course.js'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
+import StatusBadge from '@/components/StatusBadge.vue'
+import WorkspaceShell from '@/components/WorkspaceShell.vue'
 import { enrollmentApi } from '@/api/enrollment.js'
 import { useAuthStore } from '@/store/auth.js'
+import { useCourseStore } from '@/store/course.js'
+import { formatMoney, normalizeOrder } from '@/utils/business.js'
 
 const route = useRoute()
-const router = useRouter()
-const courseStore = useCourseStore()
 const auth = useAuthStore()
+const courseStore = useCourseStore()
+const currentOrder = ref(null)
+const actionLoading = ref(false)
+const actionError = ref('')
+const actionSuccess = ref('')
 
-const enrolling = ref(false)
-const enrollError = ref('')
-const enrollmentStatus = ref('NONE') // NONE | PENDING | ACTIVE
-
-const course = computed(() => courseStore.selectedCourse)
-const loading = computed(() => courseStore.loading)
-const isInstructor = computed(() => auth.user?.role === 'INSTRUCTOR')
-
-const categoryConfig = {
-  '백엔드': { badge: 'badge-teal', bg: 'thumb-teal', thumb: 'spring_boot' },
-  '프론트엔드': { badge: 'badge-teal', bg: 'thumb-teal', thumb: 'vue_js' },
-  'DevOps': { badge: 'badge-blue', bg: 'thumb-blue', thumb: 'kubernetes' },
-  '데이터': { badge: 'badge-purple', bg: 'thumb-purple', thumb: 'python' },
-  'AI': { badge: 'badge-pink', bg: 'thumb-pink', thumb: 'generative_ai' },
-}
-
-const config = computed(() => categoryConfig[course.value?.category] || {})
-const badgeClass = computed(() => config.value.badge || 'badge-gray')
-const thumbBg = computed(() => config.value.bg || 'thumb-gray')
-
-const displayCategory = computed(() => course.value?.category || '-')
-
-const displayInstructorName = computed(() => {
-  return (
-    course.value?.instructorName ||
-    course.value?.teacherName ||
-    course.value?.instructor?.name ||
-    course.value?.instructor_name ||
-    course.value?.ownerName ||
-    '강사 정보 없음'
-  )
+const product = computed(() => courseStore.selectedProduct)
+const actionLabel = computed(() => {
+  if (!currentOrder.value) return '발주 요청'
+  if (currentOrder.value.status === 'REQUESTED') return '본사 승인 대기 중'
+  if (currentOrder.value.status === 'APPROVED') return '입고 확인'
+  if (currentOrder.value.status === 'RECEIVED') return '입고 완료'
+  return '반려된 발주'
 })
+const actionDisabled = computed(() => actionLoading.value || product.value?.status !== 'ACTIVE' || ['REQUESTED', 'RECEIVED', 'REJECTED'].includes(currentOrder.value?.status))
 
-const displayEnrollmentCount = computed(() => {
-  const value = Number(
-    course.value?.enrollmentCount ??
-    course.value?.enrollment_count ??
-    0
-  )
-  return Number.isNaN(value) ? 0 : value.toLocaleString()
-})
-
-const displayPrice = computed(() => {
-  const value = Number(course.value?.price ?? 0)
-  return Number.isNaN(value) ? '0' : value.toLocaleString()
-})
-
-const thumbSrc = computed(() => {
-  const key = course.value?.thumbnail || config.value.thumb
-  if (!key) return null
-
+async function loadOrderStatus() {
+  if (!auth.isStore || !product.value?.id) return
   try {
-    return new URL(`../assets/images/courses/${key}.png`, import.meta.url).href
+    const response = await enrollmentApi.getMyOrders()
+    const payload = response.data?.data ?? response.data
+    const orders = Array.isArray(payload) ? payload.map(normalizeOrder) : []
+    currentOrder.value = orders.find((order) => Number(order.productId) === Number(product.value.id)) || null
   } catch {
-    return null
-  }
-})
-
-const buttonLabel = computed(() => {
-  if (isInstructor.value) return '강사 계정은 신청 불가'
-  if (enrollmentStatus.value === 'ACTIVE') return '내 수강 목록으로 이동'
-  if (enrollmentStatus.value === 'PENDING') return '신청 완료 · 결제 처리 중'
-  return '결제하고 수강하기'
-})
-
-const buttonDisabled = computed(() => {
-  if (enrolling.value) return true
-  if (isInstructor.value) return true
-  if (enrollmentStatus.value === 'PENDING') return true
-  return false
-})
-
-const helperText = computed(() => {
-  if (isInstructor.value) {
-    return '강사 계정은 본인 강의를 수강 신청할 수 없습니다.'
-  }
-
-  if (enrollmentStatus.value === 'ACTIVE') {
-    return '이미 수강 중인 강의입니다. 내 수강 목록에서 바로 이어서 학습할 수 있습니다.'
-  }
-
-  if (enrollmentStatus.value === 'PENDING') {
-    return '수강 신청이 접수되었습니다. 결제/처리 상태가 반영되면 내 수강 목록에서 확인할 수 있습니다.'
-  }
-
-  return '결제를 진행하면 수강 신청이 함께 처리됩니다.'
-})
-
-async function loadEnrollmentStatus() {
-  if (!auth.user?.id || !course.value?.id || isInstructor.value) {
-    enrollmentStatus.value = 'NONE'
-    return
-  }
-
-  try {
-    const res = await enrollmentApi.getMyEnrollments()
-    console.log('[CourseDetail] my enrollments response =', res.data)
-
-    const enrollments = Array.isArray(res.data?.data)
-      ? res.data.data
-      : Array.isArray(res.data)
-        ? res.data
-        : []
-
-    const matched = enrollments.find(item => Number(item.courseId) === Number(course.value.id))
-
-    if (!matched) {
-      enrollmentStatus.value = 'NONE'
-      return
-    }
-
-    enrollmentStatus.value = matched.status === 'ACTIVE' ? 'ACTIVE' : 'PENDING'
-  } catch (e) {
-    console.error('[CourseDetail] failed to load enrollment status:', e)
-    enrollmentStatus.value = 'NONE'
+    currentOrder.value = null
   }
 }
 
-async function handlePrimaryAction() {
-  enrollError.value = ''
-
-  if (!course.value?.id) {
-    enrollError.value = '강의 정보가 올바르지 않습니다.'
-    return
-  }
-
-  if (isInstructor.value) {
-    enrollError.value = '강사 계정은 본인 강의를 수강 신청할 수 없습니다.'
-    return
-  }
-
-  if (enrollmentStatus.value === 'ACTIVE') {
-    router.push('/enrollments')
-    return
-  }
-
-  if (enrollmentStatus.value === 'PENDING') {
-    return
-  }
-
-  enrolling.value = true
+async function handleStoreAction() {
+  actionError.value = ''
+  actionSuccess.value = ''
+  actionLoading.value = true
 
   try {
-    await enrollmentApi.enroll(course.value.id)
-    enrollmentStatus.value = 'PENDING'
-  } catch (e) {
-    console.error('[CourseDetail] enroll failed:', e)
-    enrollError.value = e.response?.data?.message || '결제/수강 신청에 실패했습니다.'
+    if (!currentOrder.value) {
+      const response = await enrollmentApi.createOrder(product.value.id)
+      currentOrder.value = normalizeOrder(response.data?.data ?? response.data)
+      actionSuccess.value = '발주 요청이 접수되었습니다.'
+    } else if (currentOrder.value.status === 'APPROVED') {
+      await enrollmentApi.receive(currentOrder.value.id)
+      currentOrder.value = { ...currentOrder.value, status: 'RECEIVED' }
+      actionSuccess.value = '입고가 완료되어 재고 반영을 요청했습니다.'
+    }
+  } catch (error) {
+    actionError.value = error.response?.data?.message || '요청을 처리하지 못했습니다. 백엔드 API 구현 상태를 확인해 주세요.'
   } finally {
-    enrolling.value = false
+    actionLoading.value = false
   }
+}
+
+function isReached(status) {
+  const order = ['REQUESTED', 'APPROVED', 'RECEIVED']
+  const currentIndex = order.indexOf(currentOrder.value?.status)
+  const targetIndex = order.indexOf(status)
+  return currentIndex >= targetIndex && targetIndex >= 0
 }
 
 onMounted(async () => {
   await courseStore.fetchCourse(route.params.id)
-  console.log('[CourseDetail] selectedCourse =', courseStore.selectedCourse)
-  await loadEnrollmentStatus()
+  await loadOrderStatus()
 })
-
-watch(
-  () => courseStore.selectedCourse,
-  async (value) => {
-    console.log('[CourseDetail] selectedCourse changed =', value)
-    if (value?.id) {
-      await loadEnrollmentStatus()
-    }
-  },
-  { deep: true }
-)
 </script>
 
 <style scoped>
-.page-wrapper {
-  min-height: 100vh;
-  background: var(--color-bg-secondary);
-}
-
-.detail-hero {
-  background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%);
-  border-bottom: 1px solid var(--color-border);
-  padding: 48px 0;
-}
-
-.detail-hero-inner {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 24px;
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 48px;
-  align-items: start;
-}
-
-.detail-info {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.detail-title {
-  font-size: 30px;
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.detail-desc {
-  font-size: 15px;
-  color: var(--color-text-secondary);
-  line-height: 1.7;
-}
-
-.detail-meta {
-  display: flex;
-  gap: 20px;
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  flex-wrap: wrap;
-}
-
-.enroll-card {
-  background: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  box-shadow: var(--shadow-md);
-}
-
-.enroll-thumb {
-  height: 160px;
+.detail-loading,
+.detail-state {
+  min-height: 360px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.enroll-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  padding: 20px;
+.detail-state {
+  padding: 36px;
+  flex-direction: column;
+  text-align: center;
 }
 
-.thumb-teal { background: #E1F5EE; }
-.thumb-blue { background: #E6F1FB; }
-.thumb-purple { background: #EEEDFE; }
-.thumb-pink { background: #FBEAF0; }
-.thumb-gray { background: #F1EFE8; }
+.detail-state span {
+  font-family: var(--font-display);
+  font-size: 30px;
+}
 
-.enroll-body {
-  padding: 20px;
+.detail-state p {
+  margin: 8px 0 20px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 16px;
+}
+
+.product-stage {
+  min-height: 300px;
+  padding: 34px;
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+}
+
+.product-stage::before,
+.product-stage::after {
+  display: none;
+}
+
+.tone-coral { background: #e6b7a6; }
+.tone-aqua { background: #a9d6d0; }
+.tone-olive { background: #cad09e; }
+.tone-leaf { background: #a9cfad; }
+.tone-amber { background: #e4c78e; }
+.tone-blue { background: #aecbd9; }
+.tone-violet { background: #c5bdd7; }
+.tone-stone { background: #d4cec3; }
+
+.category-tile {
+  width: 90px;
+  height: 90px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-lg);
+  color: #25303b;
+  font-size: 27px;
+  font-weight: 750;
+}
+
+.stage-category {
+  color: var(--color-accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.stage-content h2 {
+  margin-top: 8px;
+  font-size: clamp(25px, 3vw, 36px);
+  font-weight: 740;
+  letter-spacing: -0.04em;
+}
+
+.stage-content p {
+  max-width: 560px;
+  margin-top: 12px;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.stage-caption {
+  text-align: right;
+}
+
+.stage-caption span,
+.stage-caption small {
+  display: block;
+}
+
+.stage-caption span {
+  width: fit-content;
+  margin-left: auto;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: var(--color-success);
+  background: var(--color-success-soft);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.stage-caption small {
+  margin-top: 9px;
+  color: var(--color-muted);
+  font-size: 10px;
+}
+
+.order-panel {
+  padding: 26px;
+}
+
+.price-row {
   display: flex;
-  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.price-row span {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.price-row strong {
+  font-size: 28px;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+
+.product-specs {
+  margin: 24px 0;
+  padding: 18px 0;
+  display: grid;
+  gap: 11px;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.product-specs div,
+.current-order {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 14px;
 }
 
-.enroll-price {
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--color-primary);
+.product-specs dt,
+.current-order > span {
+  color: var(--color-muted);
+  font-size: 11px;
 }
 
-.btn-full {
-  width: 100%;
-  padding: 13px;
-  font-size: 15px;
-  justify-content: center;
-}
-
-.btn-disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.enroll-info-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.enroll-info-list li {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-}
-
-.error-msg {
-  font-size: 13px;
-  color: #dc2626;
-  padding: 8px 12px;
-  background: #fef2f2;
-  border-radius: var(--radius-sm);
-}
-
-.helper-text {
+.product-specs dd {
+  margin: 0;
   font-size: 12px;
-  color: var(--color-text-muted);
-  line-height: 1.5;
+  font-weight: 700;
 }
 
-.empty-text {
-  font-size: 14px;
-  color: var(--color-text-muted);
+.current-order {
+  margin-bottom: 14px;
 }
 
-.loading-center {
-  display: flex;
-  justify-content: center;
-  padding: 100px 0;
+.order-button {
+  width: 100%;
 }
 
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--color-border);
-  border-top-color: var(--color-primary);
+.panel-helper {
+  margin-top: 12px;
+  color: var(--color-muted);
+  font-size: 10px;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.order-panel .notice {
+  margin-top: 14px;
+}
+
+.flow-panel {
+  padding: 28px;
+}
+
+.flow-heading > span {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.flow-heading h2 {
+  margin-top: 7px;
+  font-size: 24px;
+  font-weight: 720;
+  letter-spacing: -0.03em;
+}
+
+.flow-panel {
+  grid-column: 1 / -1;
+}
+
+.status-flow {
+  margin: 28px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  list-style: none;
+}
+
+.status-flow li {
+  position: relative;
+  padding-top: 20px;
+  color: var(--color-muted);
+  border-top: 1px solid var(--color-border-strong);
+}
+
+.status-flow li i {
+  position: absolute;
+  top: -5px;
+  left: 0;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--color-surface);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  background: var(--color-surface-muted);
 }
 
-.badge-gray {
-  background: #f3f4f6;
-  color: #6b7280;
+.status-flow li.reached {
+  color: var(--color-accent-strong);
+  border-color: var(--color-accent);
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+.status-flow li.reached i {
+  background: var(--color-accent);
+}
+
+.status-flow strong,
+.status-flow small {
+  display: block;
+}
+
+.status-flow strong {
+  font-size: 12px;
+}
+
+.status-flow small {
+  margin-top: 4px;
+  font-size: 9px;
+}
+
+.reject-note {
+  margin-top: 22px;
+  color: var(--color-muted);
+  font-size: 10px;
+}
+
+@media (max-width: 1080px) {
+  .detail-layout {
+    grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 900px) {
-  .detail-hero-inner {
+@media (max-width: 620px) {
+  .product-stage {
+    min-height: 0;
+    padding: 24px;
+    grid-template-columns: 64px 1fr;
+    align-items: start;
+  }
+
+  .category-tile {
+    width: 64px;
+    height: 64px;
+    font-size: 21px;
+  }
+
+  .stage-caption {
+    grid-column: 2;
+    text-align: left;
+  }
+
+  .stage-caption span {
+    margin-left: 0;
+  }
+
+  .status-flow {
     grid-template-columns: 1fr;
+    gap: 18px;
   }
 }
 </style>

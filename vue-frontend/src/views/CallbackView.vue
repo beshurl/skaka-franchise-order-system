@@ -1,92 +1,97 @@
 <template>
-  <div class="callback-page">
-    <div class="callback-box">
-      <div class="spinner"></div>
-      <p>{{ message }}</p>
+  <main class="callback-page">
+    <div class="callback-card">
+      <span class="brand-mark">S</span>
+      <div class="spinner" aria-hidden="true"></div>
+      <h1>{{ message }}</h1>
+      <p>잠시만 기다려 주세요. 업무 화면으로 연결하고 있습니다.</p>
     </div>
-  </div>
+  </main>
 </template>
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/store/auth.js'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
-
-const message = ref('로그인 처리 중...')
+const message = ref('로그인 확인 중')
 const processing = ref(false)
 
 onMounted(async () => {
   if (processing.value) return
   processing.value = true
 
-  const code = route.query.code
-  const error = route.query.error
-  const errorDescription = route.query.error_description
-
-  if (error) {
-    console.error('OAuth callback error:', {
-      error,
-      errorDescription
-    })
-    message.value = '로그인에 실패했습니다. 다시 시도해주세요.'
-    router.replace('/login')
+  if (route.query.error) {
+    message.value = '로그인에 실패했습니다'
+    window.setTimeout(() => router.replace('/login'), 700)
     return
   }
 
-  if (!code) {
-    console.error('OAuth callback error: code 파라미터가 없습니다.')
-    message.value = '잘못된 로그인 요청입니다.'
-    router.replace('/login')
+  if (!route.query.code) {
+    message.value = '잘못된 로그인 요청입니다'
+    window.setTimeout(() => router.replace('/login'), 700)
     return
   }
 
   try {
-    await auth.handleCallback(code)
-    message.value = '로그인 완료! 이동 중입니다...'
-    router.replace('/courses')
-  } catch (err) {
-    console.error('OAuth callback 처리 실패:', err)
-    message.value = '로그인 처리에 실패했습니다.'
-    router.replace('/login')
+    await auth.handleCallback(route.query.code)
+    message.value = '로그인이 완료되었습니다'
+    await router.replace('/courses')
+  } catch {
+    message.value = '로그인 처리에 실패했습니다'
+    window.setTimeout(() => router.replace('/login'), 700)
   }
 })
 </script>
 
 <style scoped>
 .callback-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-bg-secondary);
+  min-height: 100dvh;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  background: var(--color-paper);
 }
 
-.callback-box {
+.callback-card {
+  width: min(100%, 420px);
+  padding: 48px 36px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
   text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  color: var(--color-text-secondary);
-  font-size: 15px;
+}
+
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  margin-inline: auto;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #ffffff;
+  background: var(--color-accent);
+  font-weight: 800;
 }
 
 .spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--color-border);
-  border-top-color: var(--color-primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  margin: 34px auto 0;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+.callback-card h1 {
+  margin-top: 20px;
+  font-size: 25px;
+  font-weight: 720;
+  letter-spacing: -0.035em;
+}
+
+.callback-card p {
+  margin-top: 9px;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
 </style>

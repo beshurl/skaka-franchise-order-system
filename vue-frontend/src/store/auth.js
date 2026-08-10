@@ -1,15 +1,26 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authApi } from '@/api/auth.js'
+import { normalizeRole, roleLabel } from '@/utils/business.js'
 
 const AUTH_SERVER_URL = import.meta.env.VITE_AUTH_SERVER_URL || 'http://localhost:8080'
 
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref(sessionStorage.getItem('access_token') || null)
-  const user = ref(JSON.parse(sessionStorage.getItem('user') || 'null'))
+  let savedUser = null
+  try {
+    savedUser = JSON.parse(sessionStorage.getItem('user') || 'null')
+  } catch {
+    sessionStorage.removeItem('user')
+  }
+  const user = ref(savedUser)
 
   const isAuthenticated = computed(() => !!accessToken.value)
-  const isInstructor = computed(() => user.value?.role === 'INSTRUCTOR')
+  const businessRole = computed(() => normalizeRole(user.value?.role))
+  const businessRoleLabel = computed(() => roleLabel(user.value?.role))
+  const isHeadquarters = computed(() => businessRole.value === 'HEADQUARTERS_ADMIN')
+  const isStore = computed(() => businessRole.value === 'STORE_ADMIN')
+  const isInstructor = computed(() => isHeadquarters.value)
 
   function setToken(token) {
     accessToken.value = token
@@ -80,6 +91,10 @@ export const useAuthStore = defineStore('auth', () => {
     accessToken,
     user,
     isAuthenticated,
+    businessRole,
+    businessRoleLabel,
+    isHeadquarters,
+    isStore,
     isInstructor,
     setToken,
     setUser,

@@ -1,373 +1,221 @@
 <template>
-  <div class="page-wrapper">
-    <AppHeader />
-    <div class="page-layout">
-      <!-- 사이드바 -->
-      <aside class="sidebar">
-        <div class="sidebar-section">
-          <div class="sidebar-label">메뉴</div>
+  <WorkspaceShell
+    active="products"
+    title="상품 카탈로그"
+    :description="auth.isHeadquarters
+      ? '가맹점에 공급할 상품을 확인하고 새로운 상품을 등록합니다.'
+      : '본사 공급 상품을 확인하고 필요한 상품을 발주합니다.'"
+  >
+    <template #actions>
+      <router-link v-if="auth.isHeadquarters" to="/courses/new" class="btn btn-primary">상품 등록</router-link>
+    </template>
 
-          <router-link
-            to="/courses"
-            class="sidebar-item"
-            :class="{ active: $route.path === '/courses' }"
-          >
-            <span class="si-icon">📚</span> 강의 목록
-          </router-link>
+    <section class="catalog-toolbar" aria-label="상품 검색과 필터">
+      <label class="search-field">
+        <span class="sr-only">상품 검색</span>
+        <input v-model.trim="search" type="search" placeholder="상품명 또는 설명 검색" />
+        <small>{{ filteredProducts.length }}개 상품</small>
+      </label>
 
-          <router-link
-            v-if="!isInstructor"
-            to="/enrollments"
-            class="sidebar-item"
-          >
-            <span class="si-icon">✅</span> 내 수강 목록
-          </router-link>
+      <div class="category-tabs" role="group" aria-label="상품 카테고리">
+        <button
+          v-for="category in courseStore.categories"
+          :key="category"
+          type="button"
+          :class="{ active: selectedCategory === category }"
+          @click="courseStore.setCategory(category)"
+        >
+          {{ category }}
+        </button>
+      </div>
+    </section>
 
-          <router-link
-            to="/mypage"
-            class="sidebar-item"
-          >
-            <span class="si-icon">⭐</span> 마이페이지
-          </router-link>
+    <div v-if="courseStore.loading" class="product-grid" aria-label="상품 로딩 중">
+      <div v-for="index in 6" :key="index" class="product-skeleton surface">
+        <div class="skeleton skeleton-visual"></div>
+        <div class="skeleton-lines">
+          <div class="skeleton line-short"></div>
+          <div class="skeleton line-wide"></div>
+          <div class="skeleton line-mid"></div>
         </div>
-
-        <div class="sidebar-section">
-          <div class="sidebar-label">계정</div>
-          <router-link to="/mypage" class="sidebar-item">
-            <span class="si-icon">👤</span> 마이페이지
-          </router-link>
-          <button class="sidebar-item sidebar-btn" @click="handleLogout">
-            <span class="si-icon">🚪</span> 로그아웃
-          </button>
-        </div>
-      </aside>
-
-      <!-- 메인 -->
-      <main class="main-content">
-        <div class="content-header">
-          <div>
-            <h1 class="page-title">강의 목록</h1>
-            <p class="page-subtitle" v-if="isInstructor">
-              강사 계정으로 등록된 강의를 확인하고 새 강의를 추가할 수 있습니다.
-            </p>
-          </div>
-
-          <router-link
-            v-if="isInstructor"
-            to="/courses/new"
-            class="btn btn-primary create-course-btn"
-          >
-            강의 등록
-          </router-link>
-        </div>
-
-        <!-- 필터 -->
-        <div class="filter-bar">
-          <button
-            v-for="cat in categories"
-            :key="cat"
-            :class="['filter-chip', { active: selectedCategory === cat }]"
-            @click="selectCategory(cat)"
-          >
-            {{ cat }}
-          </button>
-        </div>
-
-        <!-- 로딩 -->
-        <div v-if="loading" class="loading-grid">
-          <div v-for="i in 6" :key="i" class="skeleton-card">
-            <div class="skeleton-thumb"></div>
-            <div class="skeleton-body">
-              <div class="skeleton-line short"></div>
-              <div class="skeleton-line"></div>
-              <div class="skeleton-line medium"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 강의 그리드 -->
-        <div v-else-if="filteredCourses.length" class="course-grid fade-in">
-          <CourseCard
-            v-for="course in filteredCourses"
-            :key="course.id"
-            :course="course"
-          />
-        </div>
-
-        <!-- 빈 상태 -->
-        <div v-else class="empty-state">
-          <p>해당 카테고리의 강의가 없습니다.</p>
-
-          <router-link
-            v-if="isInstructor"
-            to="/courses/new"
-            class="btn btn-primary empty-action-btn"
-          >
-            첫 강의 등록하기
-          </router-link>
-        </div>
-      </main>
+      </div>
     </div>
-  </div>
+
+    <section v-else-if="courseStore.error" class="catalog-state surface" role="alert">
+      <span>상품 데이터를 불러오지 못했습니다.</span>
+      <p>{{ courseStore.error }}</p>
+      <button type="button" class="btn btn-secondary" @click="courseStore.fetchCourses">다시 시도</button>
+    </section>
+
+    <div v-else-if="filteredProducts.length" class="product-grid enter">
+      <ProductCard v-for="product in filteredProducts" :key="product.id" :product="product" />
+    </div>
+
+    <section v-else class="catalog-state surface">
+      <span>조건에 맞는 상품이 없습니다.</span>
+      <p>검색어나 카테고리를 바꾸거나 새 상품을 등록해 보세요.</p>
+      <router-link v-if="auth.isHeadquarters" to="/courses/new" class="btn btn-primary">첫 상품 등록</router-link>
+    </section>
+  </WorkspaceShell>
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import AppHeader from '@/components/AppHeader.vue'
-import CourseCard from '@/components/CourseCard.vue'
-import { useCourseStore } from '@/store/course.js'
+import { computed, onMounted, ref } from 'vue'
+import ProductCard from '@/components/ProductCard.vue'
+import WorkspaceShell from '@/components/WorkspaceShell.vue'
 import { useAuthStore } from '@/store/auth.js'
+import { useCourseStore } from '@/store/course.js'
 
-const router = useRouter()
-const courseStore = useCourseStore()
 const auth = useAuthStore()
-
-const { categories, loading } = courseStore
+const courseStore = useCourseStore()
+const search = ref('')
 
 const selectedCategory = computed(() => courseStore.selectedCategory)
-const isInstructor = computed(() => auth.user?.role === 'INSTRUCTOR')
-
-const filteredCourses = computed(() => {
-  if (!Array.isArray(courseStore.courses)) return []
-  if (selectedCategory.value === '전체') return courseStore.courses
-  return courseStore.courses.filter(c => c.category === selectedCategory.value)
+const filteredProducts = computed(() => {
+  const query = search.value.toLocaleLowerCase('ko-KR')
+  return courseStore.products.filter((product) => {
+    const matchesCategory = selectedCategory.value === '전체' || product.categoryLabel === selectedCategory.value
+    const matchesSearch = !query || `${product.name} ${product.description}`.toLocaleLowerCase('ko-KR').includes(query)
+    return matchesCategory && matchesSearch
+  })
 })
 
-function selectCategory(cat) {
-  courseStore.setCategory(cat)
-}
-
-function handleLogout() {
-  auth.logout()
-  router.push('/')
-}
-
-onMounted(() => {
-  courseStore.fetchCourses()
-})
+onMounted(() => courseStore.fetchCourses())
 </script>
 
 <style scoped>
-.page-wrapper {
-  min-height: 100vh;
-  background: var(--color-bg-secondary);
-}
-
-.page-layout {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 32px 24px;
+.catalog-toolbar {
+  margin-bottom: 28px;
   display: grid;
-  grid-template-columns: 220px 1fr;
-  gap: 28px;
+  gap: 18px;
 }
 
-/* 사이드바 */
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.search-field {
+  position: relative;
+  display: block;
 }
 
-.sidebar-section {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: 8px;
-}
-
-.sidebar-label {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-  padding: 8px 12px 4px;
-}
-
-.sidebar-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  transition: var(--transition);
-  background: none;
-  border: none;
+.search-field input {
   width: 100%;
-  text-align: left;
-  cursor: pointer;
-  font-family: var(--font-sans);
-  text-decoration: none;
+  min-height: 54px;
+  padding: 0 104px 0 18px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  outline: none;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
 }
 
-.sidebar-item:hover {
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-primary);
+.search-field input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
-.sidebar-item.active {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
-  font-weight: 500;
+.search-field input::placeholder {
+  color: var(--color-muted);
 }
 
-.si-icon {
-  font-size: 15px;
+.search-field small {
+  position: absolute;
+  top: 50%;
+  right: 18px;
+  color: var(--color-muted);
+  font-size: 11px;
+  transform: translateY(-50%);
 }
 
-.sidebar-btn {
-  color: var(--color-text-secondary);
-}
-
-/* 메인 */
-.main-content {
-  min-width: 0;
-}
-
-.content-header {
-  margin-bottom: 20px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.page-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-}
-
-.page-subtitle {
-  margin-top: 6px;
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-
-.create-course-btn {
-  white-space: nowrap;
-  text-decoration: none;
-}
-
-/* 필터 */
-.filter-bar {
+.category-tabs {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 24px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.filter-chip {
-  padding: 7px 16px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 500;
-  border: 1.5px solid var(--color-border);
-  background: var(--color-bg-primary);
-  color: var(--color-text-secondary);
-  transition: var(--transition);
-  cursor: pointer;
+.category-tabs::-webkit-scrollbar {
+  display: none;
 }
 
-.filter-chip:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-.filter-chip.active {
-  background: var(--color-primary);
-  color: #fff;
-  border-color: var(--color-primary);
-}
-
-/* 강의 그리드 */
-.course-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-
-/* 스켈레톤 */
-.loading-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-
-.skeleton-card {
-  background: var(--color-bg-primary);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
+.category-tabs button {
+  min-height: 38px;
+  padding: 0 14px;
   border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-ink-soft);
+  background: var(--color-surface);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: color 180ms ease, background-color 180ms ease, border-color 180ms ease;
 }
 
-.skeleton-thumb {
-  height: 120px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
+.category-tabs button:hover,
+.category-tabs button.active {
+  color: #ffffff;
+  border-color: var(--color-accent);
+  background: var(--color-accent);
 }
 
-.skeleton-body {
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
-.skeleton-line {
+.product-skeleton {
+  overflow: hidden;
+}
+
+.skeleton-visual {
+  height: 172px;
+  border-radius: 0;
+}
+
+.skeleton-lines {
+  padding: 22px;
+  display: grid;
+  gap: 11px;
+}
+
+.skeleton-lines .skeleton {
   height: 12px;
   border-radius: 6px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
 }
 
-.skeleton-line.short {
-  width: 40%;
-}
+.line-short { width: 32%; }
+.line-wide { width: 86%; }
+.line-mid { width: 58%; }
 
-.skeleton-line.medium {
-  width: 70%;
-}
-
-@keyframes shimmer {
-  to {
-    background-position: -200% 0;
-  }
-}
-
-/* 빈 상태 */
-.empty-state {
+.catalog-state {
+  min-height: 300px;
+  padding: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
   text-align: center;
-  padding: 80px 0;
-  color: var(--color-text-muted);
-  font-size: 15px;
 }
 
-.empty-action-btn {
-  display: inline-flex;
-  margin-top: 16px;
-  text-decoration: none;
+.catalog-state span {
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
 }
 
-@media (max-width: 992px) {
-  .page-layout {
+.catalog-state p {
+  margin: 10px 0 22px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .product-grid {
     grid-template-columns: 1fr;
   }
 
-  .course-grid,
-  .loading-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .content-header {
-    flex-direction: column;
-    align-items: flex-start;
+  .catalog-state {
+    min-height: 260px;
+    padding: 28px;
   }
 }
 </style>

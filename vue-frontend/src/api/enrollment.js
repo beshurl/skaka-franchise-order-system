@@ -1,16 +1,39 @@
 import api from './index.js'
 
 export const enrollmentApi = {
-  getMyEnrollments() {
+  getMyOrders() {
     return api.get('/api/enrollments/my')
   },
+
+  getHeadquartersOrders() {
+    return api.get('/api/enrollments')
+  },
+
+  getOrdersByStore(storeId) {
+    return api.get(`/api/enrollments/user/${storeId}`)
+  },
+
+  createOrder(productId) {
+    return api.post('/api/enrollments', { courseId: productId })
+  },
+
+  approve(orderId) {
+    return api.patch(`/api/enrollments/${orderId}/status`, { status: 'APPROVED' })
+  },
+
+  reject(orderId) {
+    return api.patch(`/api/enrollments/${orderId}/status`, { status: 'REJECTED' })
+  },
+
+  receive(orderId) {
+    return api.patch(`/api/enrollments/${orderId}/status`, { status: 'RECEIVED' })
+  },
+
+  getMyEnrollments() {
+    return this.getMyOrders()
+  },
+
   enroll(courseId) {
-    return api.post('/api/enrollments', { courseId })
-  },
-  cancel(enrollmentId) {
-    return api.delete(`/api/enrollments/${enrollmentId}`)
-  },
-  getRecommendations(userId) {
-    return api.get(`/api/recommend/${userId}`)
+    return this.createOrder(courseId)
   }
 }

@@ -13,11 +13,15 @@ export const courseApi = {
     return api.get(`/api/courses/${id}`)
   },
 
+  getByCategory(category) {
+    return api.get(`/api/courses/category/${category}`)
+  },
+
   create(data) {
     return api.post('/api/courses', data)
   },
 
   update(id, data) {
-    return api.put(`/api/courses/${id}`, data)
+    return api.patch(`/api/courses/${id}`, data)
   }
 }

@@ -1,115 +1,146 @@
 <template>
-  <div class="login-page">
-    <div class="login-layout">
-      <!-- 좌측 브랜딩 -->
-      <div class="login-left">
-        <div class="brand">
-          <img src="@/assets/images/logo/main_logo.png" alt="LearnNexus" class="brand-logo" />
-          <span class="brand-name">LearnNexus</span>
-        </div>
-        <div class="brand-content">
-          <h2>다시 만나서<br>반갑습니다</h2>
-          <p>로그인하고 나만의 학습 여정을 이어가세요.</p>
-          <ul class="feature-list">
-            <li v-for="f in features" :key="f">
-              <span class="dot"></span>{{ f }}
-            </li>
-          </ul>
-        </div>
+  <main class="auth-page">
+    <section class="auth-visual" aria-label="Storelink 서비스 소개">
+      <img :src="heroImage" alt="편의점에서 입고 상품을 확인하는 관리자" />
+      <div class="auth-visual-shade"></div>
+
+      <router-link to="/" class="brand-link" aria-label="Storelink 홈">
+        <span>S</span>
+        <strong>Storelink</strong>
+      </router-link>
+
+      <div class="visual-copy">
+        <h1>본사와 가맹점이<br />같은 발주 상태를 봅니다.</h1>
+        <p>상품 발주부터 승인, 입고 확인과 재고 반영까지 한 흐름으로 관리하세요.</p>
       </div>
+    </section>
 
-      <!-- 우측 -->
-      <div class="login-right">
-        <div class="login-box fade-in-up">
-          <router-link to="/" class="back-link">← 홈으로</router-link>
+    <section class="auth-content">
+      <div class="auth-box">
+        <router-link to="/" class="back-link">홈으로 돌아가기</router-link>
 
-          <!-- 로그인 영역 -->
-          <div v-if="!showRegister" class="section">
-            <h3 class="section-title">로그인</h3>
-            <p class="section-desc">LearnNexus 계정으로 로그인합니다.</p>
-            <button class="btn btn-primary btn-full" @click="handleOAuth">로그인</button>
-            <div class="switch-link">
-              계정이 없으신가요?
-              <button class="text-btn" @click="showRegister = true">회원가입</button>
-            </div>
+        <template v-if="!showRegister">
+          <div class="auth-heading">
+            <h2>로그인</h2>
+            <p>계속하려면 인증 서버에서 로그인해 주세요.</p>
           </div>
 
-          <!-- 회원가입 영역 -->
-          <div v-else class="section">
-            <h3 class="section-title">회원가입</h3>
-            <form @submit.prevent="handleRegister" class="form">
-              <div class="form-group">
-                <label class="form-label">이름</label>
-                <input v-model="registerForm.name" type="text" class="form-input" placeholder="홍길동" required />
-              </div>
-              <div class="form-group">
-                <label class="form-label">이메일</label>
-                <input v-model="registerForm.email" type="email" class="form-input" placeholder="user@example.com" required />
-              </div>
-              <div class="form-group">
-                <label class="form-label">비밀번호</label>
-                <input v-model="registerForm.password" type="password" class="form-input" placeholder="8자 이상" required />
-              </div>
-              <div class="form-group">
-                <label class="form-label">역할</label>
-                <select v-model="registerForm.role" class="form-input">
-                  <option value="STUDENT">학생</option>
-                  <option value="INSTRUCTOR">강사</option>
-                </select>
-              </div>
-              <div v-if="error" class="error-msg">{{ error }}</div>
-              <div v-if="success" class="success-msg">{{ success }}</div>
-              <button type="submit" class="btn btn-primary btn-full" :disabled="loading">
-                <span v-if="loading">가입 중...</span>
-                <span v-else>회원가입</span>
-              </button>
-            </form>
-            <div class="switch-link">
-              이미 계정이 있으신가요?
-              <button class="text-btn" @click="showRegister = false">로그인</button>
-            </div>
+          <button type="button" class="btn btn-primary auth-submit" @click="auth.redirectToLogin">
+            OAuth2로 로그인
+          </button>
+
+          <p class="auth-help">로그인하면 역할에 맞는 업무 화면으로 이동합니다.</p>
+
+          <p class="auth-switch">
+            처음 이용하시나요?
+            <button type="button" @click="openRegister">회원가입</button>
+          </p>
+        </template>
+
+        <template v-else>
+          <div class="auth-heading">
+            <h2>회원가입</h2>
+            <p>업무에 사용할 계정 정보를 입력해 주세요.</p>
           </div>
 
-        </div>
+          <form class="register-form" novalidate @submit.prevent="handleRegister">
+            <div class="field-group">
+              <label for="register-name" class="field-label">이름</label>
+              <input id="register-name" v-model.trim="registerForm.name" class="field-input" type="text" placeholder="서울역점 관리자" autocomplete="name" />
+            </div>
+
+            <div class="field-group">
+              <label for="register-email" class="field-label">이메일</label>
+              <input id="register-email" v-model.trim="registerForm.email" class="field-input" type="email" placeholder="store@example.com" autocomplete="email" />
+            </div>
+
+            <div class="field-group">
+              <label for="register-password" class="field-label">비밀번호</label>
+              <input id="register-password" v-model="registerForm.password" class="field-input" type="password" placeholder="8자 이상 입력" autocomplete="new-password" />
+              <small>영문, 숫자 조합 제한 없이 8자 이상 입력해 주세요.</small>
+            </div>
+
+            <fieldset class="role-options">
+              <legend class="field-label">업무 역할</legend>
+              <label :class="{ active: registerForm.role === 'STORE_ADMIN' }">
+                <input v-model="registerForm.role" type="radio" value="STORE_ADMIN" />
+                <span><strong>가맹점 관리자</strong><small>상품 발주와 입고 확인</small></span>
+              </label>
+              <label :class="{ active: registerForm.role === 'HEADQUARTERS_ADMIN' }">
+                <input v-model="registerForm.role" type="radio" value="HEADQUARTERS_ADMIN" />
+                <span><strong>본사 관리자</strong><small>상품 등록과 발주 승인</small></span>
+              </label>
+            </fieldset>
+
+            <p v-if="error" class="notice notice-error" role="alert">{{ error }}</p>
+            <p v-if="success" class="notice notice-success">{{ success }}</p>
+
+            <button type="submit" class="btn btn-primary auth-submit" :disabled="loading">
+              {{ loading ? '가입 처리 중' : '회원가입' }}
+            </button>
+          </form>
+
+          <p class="auth-switch">
+            이미 계정이 있나요?
+            <button type="button" @click="showRegister = false">로그인</button>
+          </p>
+        </template>
       </div>
-    </div>
-  </div>
+    </section>
+  </main>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useAuthStore } from '@/store/auth.js'
+import { reactive, ref } from 'vue'
 import { authApi } from '@/api/auth.js'
+import { useAuthStore } from '@/store/auth.js'
+import { backendRole } from '@/utils/business.js'
+import heroImage from '@/assets/images/storelink-hero.jpg'
 
 const auth = useAuthStore()
-
 const showRegister = ref(false)
 const loading = ref(false)
 const error = ref('')
 const success = ref('')
+const registerForm = reactive({ name: '', email: '', password: '', role: 'STORE_ADMIN' })
 
-const registerForm = ref({ name: '', email: '', password: '', role: 'STUDENT' })
+function openRegister() {
+  error.value = ''
+  success.value = ''
+  showRegister.value = true
+}
 
-const features = ['수강 중인 강의 이어보기', '맞춤 강의 추천', '수료증 관리']
-
-function handleOAuth() {
-  auth.redirectToLogin()
+function validate() {
+  if (!registerForm.name) return '이름은 필수입니다.'
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(registerForm.email)) return '올바른 이메일 형식으로 입력해 주세요.'
+  if (registerForm.password.length < 8) return '비밀번호는 8자 이상이어야 합니다.'
+  return ''
 }
 
 async function handleRegister() {
-  error.value = ''
+  error.value = validate()
   success.value = ''
+  if (error.value) return
+
   loading.value = true
   try {
-    await authApi.register(registerForm.value)
-    success.value = '회원가입 완료! 로그인 페이지로 이동합니다.'
-    registerForm.value = { name: '', email: '', password: '', role: 'STUDENT' }
-    setTimeout(() => {
+    await authApi.register({
+      name: registerForm.name,
+      email: registerForm.email,
+      password: registerForm.password,
+      // 현재 Auth/User 이미지와 호환되도록 기존 enum으로 전송한다.
+      role: backendRole(registerForm.role)
+    })
+    success.value = '회원가입이 완료되었습니다. OAuth2 로그인을 진행해 주세요.'
+    registerForm.name = ''
+    registerForm.email = ''
+    registerForm.password = ''
+    window.setTimeout(() => {
       showRegister.value = false
       success.value = ''
-    }, 2000)
-  } catch (e) {
-    error.value = e.response?.data?.message || '회원가입에 실패했습니다.'
+    }, 1400)
+  } catch (requestError) {
+    error.value = requestError.response?.data?.message || '회원가입에 실패했습니다.'
   } finally {
     loading.value = false
   }
@@ -117,104 +148,277 @@ async function handleRegister() {
 </script>
 
 <style scoped>
-.login-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: stretch;
-}
-.login-layout {
+.auth-page {
+  min-height: 100dvh;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  width: 100%;
-  min-height: 100vh;
+  grid-template-columns: minmax(440px, 1fr) minmax(480px, 0.86fr);
+  background: var(--color-surface);
 }
-.login-left {
-  background: linear-gradient(160deg, #1a4f8a 0%, #185FA5 50%, #1e7bc4 100%);
-  padding: 48px;
-  display: flex;
-  flex-direction: column;
-  gap: 48px;
-}
-.brand { display: flex; align-items: center; gap: 10px; }
-.brand-logo { width: 40px; height: 40px; border-radius: 10px; object-fit: contain; }
-.brand-name { font-size: 18px; font-weight: 700; color: #fff; }
-.brand-content h2 {
-  font-size: 32px; font-weight: 700; color: #fff;
-  line-height: 1.35; margin-bottom: 14px;
-}
-.brand-content p { font-size: 15px; color: rgba(255,255,255,0.75); margin-bottom: 28px; }
-.feature-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
-.feature-list li { display: flex; align-items: center; gap: 10px; font-size: 14px; color: rgba(255,255,255,0.85); }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.6); flex-shrink: 0; }
 
-.login-right {
+.auth-visual {
+  position: relative;
+  min-height: 100dvh;
+  overflow: hidden;
+  color: #ffffff;
+  background: #22262f;
+}
+
+.auth-visual > img,
+.auth-visual-shade {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.auth-visual > img {
+  object-fit: cover;
+  object-position: 57% center;
+}
+
+.auth-visual-shade {
+  background: linear-gradient(180deg, rgba(12, 15, 22, 0.28) 0%, rgba(12, 15, 22, 0.08) 38%, rgba(12, 15, 22, 0.76) 100%);
+}
+
+.brand-link {
+  position: absolute;
+  z-index: 1;
+  top: 36px;
+  left: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #ffffff;
+}
+
+.brand-link span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--color-accent);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.brand-link strong {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.visual-copy {
+  position: absolute;
+  z-index: 1;
+  right: 44px;
+  bottom: 48px;
+  left: 40px;
+}
+
+.visual-copy h1 {
+  max-width: 620px;
+  font-size: clamp(34px, 4.1vw, 62px);
+  font-weight: 680;
+  letter-spacing: -0.045em;
+  line-height: 1.08;
+}
+
+.visual-copy p {
+  max-width: 520px;
+  margin-top: 18px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.auth-content {
+  min-height: 100dvh;
+  padding: 64px clamp(34px, 6vw, 92px);
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 48px;
-  background: var(--color-bg-primary);
 }
-.login-box { width: 100%; max-width: 400px; }
+
+.auth-box {
+  width: 100%;
+  max-width: 440px;
+  margin-inline: auto;
+}
+
 .back-link {
-  display: inline-block;
+  display: inline-flex;
+  margin-bottom: 64px;
+  color: var(--color-muted);
   font-size: 13px;
-  color: var(--color-text-secondary);
-  margin-bottom: 32px;
-  transition: var(--transition);
 }
-.back-link:hover { color: var(--color-primary); }
 
-.section { display: flex; flex-direction: column; gap: 16px; }
-.section-title { font-size: 22px; font-weight: 700; color: var(--color-text-primary); margin-bottom: 4px; }
-.section-desc { font-size: 14px; color: var(--color-text-secondary); margin-bottom: 4px; }
+.back-link::before {
+  margin-right: 7px;
+  content: "←";
+}
 
-.form { display: flex; flex-direction: column; gap: 14px; }
-.form-group { display: flex; flex-direction: column; gap: 6px; }
-.form-label { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); }
-.form-input {
-  padding: 10px 14px;
-  border: 1.5px solid var(--color-border);
-  border-radius: var(--radius-md);
+.back-link:hover {
+  color: var(--color-ink);
+}
+
+.auth-heading h2 {
+  font-size: 34px;
+  font-weight: 720;
+  letter-spacing: -0.04em;
+}
+
+.auth-heading p {
+  margin-top: 10px;
+  color: var(--color-muted);
   font-size: 14px;
-  font-family: var(--font-sans);
-  color: var(--color-text-primary);
-  background: var(--color-bg-primary);
-  transition: var(--transition);
-  outline: none;
+  line-height: 1.6;
 }
-.form-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-light); }
-.btn-full { width: 100%; padding: 12px; font-size: 15px; justify-content: center; margin-top: 4px; }
 
-.switch-link {
+.auth-submit {
+  width: 100%;
+  min-height: 50px;
+  margin-top: 34px;
+}
+
+.auth-help {
+  margin-top: 12px;
+  color: var(--color-muted);
+  font-size: 12px;
   text-align: center;
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  margin-top: 4px;
 }
-.text-btn {
-  background: none;
-  border: none;
-  color: var(--color-primary);
+
+.auth-switch {
+  margin-top: 38px;
+  padding-top: 22px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-muted);
   font-size: 13px;
-  font-weight: 500;
+  text-align: center;
+}
+
+.auth-switch button {
+  margin-left: 5px;
+  color: var(--color-accent-strong);
+  font-weight: 700;
+}
+
+.register-form {
+  margin-top: 30px;
+  display: grid;
+  gap: 19px;
+}
+
+.field-group small {
+  display: block;
+  margin-top: 7px;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.role-options {
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.role-options legend {
+  margin-bottom: 8px;
+}
+
+.role-options > label {
+  min-height: 78px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  padding: 0 2px;
-  text-decoration: underline;
 }
-.error-msg {
-  padding: 10px 14px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  color: #dc2626;
+
+.role-options > label.active {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 10%, transparent);
 }
-.success-msg {
-  padding: 10px 14px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  border-radius: var(--radius-md);
+
+.role-options input {
+  width: 15px;
+  height: 15px;
+  margin-right: 10px;
+  accent-color: var(--color-accent);
+}
+
+.role-options span,
+.role-options strong,
+.role-options small {
+  display: block;
+}
+
+.role-options strong {
   font-size: 13px;
-  color: #16a34a;
+}
+
+.role-options small {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .auth-page {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-visual {
+    min-height: 320px;
+  }
+
+  .auth-visual > img {
+    object-position: center 38%;
+  }
+
+  .brand-link {
+    top: 24px;
+    left: 24px;
+  }
+
+  .visual-copy {
+    right: 24px;
+    bottom: 28px;
+    left: 24px;
+  }
+
+  .visual-copy p {
+    max-width: 440px;
+  }
+
+  .auth-content {
+    min-height: auto;
+    padding: 46px 24px 64px;
+  }
+
+  .back-link {
+    margin-bottom: 42px;
+  }
+}
+
+@media (max-width: 520px) {
+  .auth-visual {
+    min-height: 270px;
+  }
+
+  .visual-copy h1 {
+    font-size: 30px;
+  }
+
+  .visual-copy p {
+    display: none;
+  }
+
+  .role-options {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

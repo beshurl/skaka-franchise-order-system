@@ -28,7 +28,7 @@ const routes = [
     path: '/courses/new',
     name: 'CourseCreate',
     component: () => import('@/views/CourseCreateView.vue'),
-    meta: { requiresAuth: true, instructorOnly: true }
+    meta: { requiresAuth: true, headquartersOnly: true }
   },
   {
     path: '/courses/:id(\\d+)',
@@ -70,7 +70,7 @@ router.beforeEach((to) => {
     return { name: 'CourseList' }
   }
 
-  if (to.meta.instructorOnly && auth.user?.role !== 'INSTRUCTOR') {
+  if (to.meta.headquartersOnly && !auth.isHeadquarters) {
     return { name: 'CourseList' }
   }
 })
