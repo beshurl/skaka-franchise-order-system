@@ -14,22 +14,22 @@ public class EnrollmentKafkaProducer {
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
     @Value("${kafka.topic.enrollment-completed}")
-    private String enrollmentCompletedTopic;
+    private String orderReceivedTopic;
 
     /**
-     * enrollment.completed 이벤트 발행
-     * → Recommend Service가 수신하여 추천 갱신
+     * 입고 완료 이벤트 발행
+     * - 발주가 RECEIVED 로 전이되고 재고가 반영된 뒤 발행한다.
      */
-    public void publishEnrollmentCompleted(KafkaEvent.EnrollmentCompletedEvent event) {
-        log.info("[Kafka Producer] enrollment.completed 발행 - enrollmentId: {}, userId: {}, courseId: {}",
+    public void publishOrderReceived(KafkaEvent.OrderReceivedEvent event) {
+        log.info("[Kafka Producer] 입고 완료 이벤트 발행 - orderId: {}, storeId: {}, productId: {}",
                 event.getEnrollmentId(), event.getUserId(), event.getCourseId());
 
-        kafkaTemplate.send(enrollmentCompletedTopic, String.valueOf(event.getUserId()), event)
+        kafkaTemplate.send(orderReceivedTopic, String.valueOf(event.getUserId()), event)
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
-                        log.error("[Kafka Producer] enrollment.completed 발행 실패: {}", ex.getMessage());
+                        log.error("[Kafka Producer] 입고 완료 이벤트 발행 실패: {}", ex.getMessage());
                     } else {
-                        log.info("[Kafka Producer] enrollment.completed 발행 성공 - offset: {}",
+                        log.info("[Kafka Producer] 입고 완료 이벤트 발행 성공 - offset: {}",
                                 result.getRecordMetadata().offset());
                     }
                 });

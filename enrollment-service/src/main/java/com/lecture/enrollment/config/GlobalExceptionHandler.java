@@ -13,9 +13,24 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    /** 존재하지 않는 발주/상품 등 요청 값 오류 */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<EnrollmentDto.ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException e) {
         return ResponseEntity.badRequest()
+                .body(EnrollmentDto.ApiResponse.error(e.getMessage()));
+    }
+
+    /** 허용되지 않은 상태 전이, 중복 발주, 중복 입고 */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<EnrollmentDto.ApiResponse<Void>> handleIllegalState(IllegalStateException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(EnrollmentDto.ApiResponse.error(e.getMessage()));
+    }
+
+    /** 본사/가맹점 권한 위반, 타 가맹점 발주 접근 */
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<EnrollmentDto.ApiResponse<Void>> handleSecurity(SecurityException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(EnrollmentDto.ApiResponse.error(e.getMessage()));
     }
 

@@ -15,6 +15,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * 발주 서비스
+ *
+ * 상태 흐름
+ *   REQUESTED -> APPROVED -> RECEIVED
+ *        |
+ *        +---> REJECTED
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -28,116 +36,210 @@ public class EnrollmentService {
     private final EnrollmentWriteService enrollmentWriteService;
 
     /**
-     * 수강신청 전체 흐름
-     * 1. 강의 존재 확인
-     * 2. 중복 수강 확인
-     * 3. Enrollment 생성 및 즉시 커밋 (PENDING)
-     * 4. 결제 요청
+     * 발주 요청 (가맹점)
+     * 1. 상품 존재 확인
+     * 2. 동일 상품 중복 발주 확인
+     * 3. REQUESTED 상태로 저장 (독립 트랜잭션 커밋)
      */
-    public EnrollmentDto.EnrollmentResponse enroll(Long userId, Long courseId) {
-        if (!courseServiceClient.existsCourse(courseId)) {
-            throw new IllegalArgumentException("존재하지 않는 강의입니다: " + courseId);
+    public EnrollmentDto.OrderResponse createOrder(Long storeId, Long productId) {
+        if (!courseServiceClient.existsProduct(productId)) {
+            throw new IllegalArgumentException("존재하지 않는 상품입니다: " + productId);
         }
 
-        if (enrollmentRepository.existsByUserIdAndCourseId(userId, courseId)) {
-            throw new IllegalArgumentException("이미 수강신청한 강의입니다");
+        if (enrollmentRepository.existsByUserIdAndCourseId(storeId, productId)) {
+            throw new IllegalStateException("이미 발주한 상품입니다: " + productId);
         }
 
-        Enrollment enrollment = enrollmentWriteService.createPendingEnrollment(userId, courseId);
+        Enrollment order = enrollmentWriteService.createRequestedOrder(storeId, productId);
 
-        paymentServiceClient.requestPayment(userId, courseId, BigDecimal.valueOf(99000));
-
-        log.info("[EnrollmentService] 수강신청 완료 (결제 대기) - enrollmentId: {}", enrollment.getId());
-        return EnrollmentDto.EnrollmentResponse.from(enrollment);
+        log.info("[EnrollmentService] 발주 요청 접수 - orderId: {}, 상태: {}", order.getId(), order.getStatus());
+        return EnrollmentDto.OrderResponse.from(order);
     }
 
     /**
-     * 수강 활성화
+     * 발주 승인 (본사)
+     * 1. REQUESTED -> APPROVED 전이 후 즉시 커밋
+     * 2. 상품 공급가로 정산 요청 (실패해도 승인은 유지하고 로그만 남김)
      */
-    @Transactional
-    public void activateEnrollment(Long userId, Long courseId) {
-        Enrollment enrollment = enrollmentRepository.findByUserIdAndCourseId(userId, courseId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "수강 정보를 찾을 수 없습니다 - userId: " + userId + ", courseId: " + courseId));
+    public EnrollmentDto.OrderStatusResponse approveOrder(Long orderId) {
+        Enrollment order = enrollmentWriteService.approveOrder(orderId);
 
-        enrollment.activate();
+        BigDecimal supplyPrice = getSupplyPrice(order.getCourseId());
+        try {
+            paymentServiceClient.requestSettlement(order.getUserId(), order.getCourseId(), supplyPrice);
+        } catch (RuntimeException e) {
+            log.error("[EnrollmentService] 정산 요청 실패 - orderId: {}, error: {}", orderId, e.getMessage());
+        }
 
-        courseServiceClient.increaseEnrollmentCount(courseId);
+        log.info("[EnrollmentService] 발주 승인 처리 완료 - orderId: {}, 정산금액: {}", orderId, supplyPrice);
+        return EnrollmentDto.OrderStatusResponse.from(order);
+    }
 
-        kafkaProducer.publishEnrollmentCompleted(
-                KafkaEvent.EnrollmentCompletedEvent.builder()
-                        .enrollmentId(enrollment.getId())
-                        .userId(userId)
-                        .courseId(courseId)
+    /**
+     * 발주 반려 (본사)
+     */
+    public EnrollmentDto.OrderStatusResponse rejectOrder(Long orderId, String reason) {
+        Enrollment order = enrollmentWriteService.rejectOrder(orderId, reason);
+
+        log.info("[EnrollmentService] 발주 반려 처리 완료 - orderId: {}", orderId);
+        return EnrollmentDto.OrderStatusResponse.from(order);
+    }
+
+    /**
+     * 입고 확인 (가맹점)
+     * 1. 본인 발주 여부와 APPROVED 상태 검증 후 RECEIVED 로 전이하고 커밋 (중복 입고 방지)
+     * 2. 상품 재고 수량 증가
+     * 3. 입고 완료 이벤트 발행
+     */
+    public EnrollmentDto.OrderStatusResponse receiveOrder(Long orderId, Long storeId) {
+        Enrollment order = enrollmentWriteService.receiveOrder(orderId, storeId);
+
+        courseServiceClient.increaseStock(order.getCourseId());
+
+        kafkaProducer.publishOrderReceived(
+                KafkaEvent.OrderReceivedEvent.builder()
+                        .enrollmentId(order.getId())
+                        .userId(order.getUserId())
+                        .courseId(order.getCourseId())
                         .build()
         );
 
-        log.info("[EnrollmentService] 수강 활성화 완료 - enrollmentId: {}", enrollment.getId());
+        log.info("[EnrollmentService] 입고 처리 완료 - orderId: {}", orderId);
+        return EnrollmentDto.OrderStatusResponse.from(order);
     }
 
     /**
-     * 사용자 수강 목록 조회
-     * - course-service에서 강의 상세 정보를 붙여서 반환
+     * 정산 완료 확인 (payment.completed 이벤트 수신)
+     * - enrollments 테이블에 정산 상태 컬럼이 없어 상태 정합성 검증과 로깅만 수행한다.
      */
-    public List<EnrollmentDto.EnrollmentResponse> getEnrollmentsByUser(Long userId) {
-        List<Enrollment> enrollments = enrollmentRepository.findByUserId(userId);
+    public void confirmSettlement(Long storeId, Long productId) {
+        Enrollment order = enrollmentRepository.findByUserIdAndCourseId(storeId, productId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "발주 정보를 찾을 수 없습니다 - storeId: " + storeId + ", productId: " + productId));
 
-        return enrollments.stream()
-                .map(enrollment -> {
-                    Map<String, Object> courseInfo = courseServiceClient.getCourse(enrollment.getCourseId());
+        if (order.getStatus() != Enrollment.Status.APPROVED) {
+            log.warn("[EnrollmentService] 정산 완료 이벤트와 발주 상태 불일치 - orderId: {}, 상태: {}",
+                    order.getId(), order.getStatus());
+            return;
+        }
 
-                    EnrollmentDto.CourseSummary courseSummary = EnrollmentDto.CourseSummary.builder()
-                            .id(toLong(courseInfo.get("id")))
-                            .title((String) courseInfo.get("title"))
-                            .description((String) courseInfo.get("description"))
-                            .category(normalizeCategory((String) courseInfo.get("category")))
-                            .price(toInteger(courseInfo.get("price")))
-                            .thumbnail((String) courseInfo.get("thumbnail"))
-                            .instructorName(
-                                    firstNonNull(
-                                            (String) courseInfo.get("instructorName"),
-                                            (String) courseInfo.get("teacherName"),
-                                            (String) courseInfo.get("instructor_name")
-                                    )
-                            )
-                            .enrollmentCount(toInteger(
-                                    firstNonNullObject(
-                                            courseInfo.get("enrollmentCount"),
-                                            courseInfo.get("enrollment_count")
-                                    )
-                            ))
-                            .build();
-
-                    return EnrollmentDto.EnrollmentResponse.from(enrollment, courseSummary);
-                })
-                .collect(Collectors.toList());
+        log.info("[EnrollmentService] 정산 완료 확인 - orderId: {}, storeId: {}, productId: {}",
+                order.getId(), storeId, productId);
     }
 
     /**
-     * 수강 이력 조회 - 추천 서비스용
+     * 가맹점 발주 목록 조회 (상품 정보 포함)
      */
-    public EnrollmentDto.EnrollmentHistoryResponse getEnrollmentHistory(Long userId) {
-        List<Long> activeCourseIds = enrollmentRepository
-                .findByUserIdAndStatus(userId, Enrollment.Status.ACTIVE)
+    public List<EnrollmentDto.OrderResponse> getStoreOrders(Long storeId, Enrollment.Status status) {
+        List<Enrollment> orders = (status == null)
+                ? enrollmentRepository.findByUserIdOrderByIdDesc(storeId)
+                : enrollmentRepository.findByUserIdAndStatusOrderByIdDesc(storeId, status);
+
+        return toResponsesWithProduct(orders);
+    }
+
+    /**
+     * 본사 전체 발주 목록 조회 (상태/가맹점 필터)
+     */
+    public List<EnrollmentDto.OrderResponse> getAllOrders(Enrollment.Status status, Long storeId) {
+        List<Enrollment> orders = (status == null)
+                ? enrollmentRepository.findAllByOrderByIdDesc()
+                : enrollmentRepository.findByStatusOrderByIdDesc(status);
+
+        if (storeId != null) {
+            orders = orders.stream()
+                    .filter(order -> order.isOwnedBy(storeId))
+                    .collect(Collectors.toList());
+        }
+
+        return toResponsesWithProduct(orders);
+    }
+
+    /**
+     * 발주 상세 조회
+     * - 본사는 전체 조회, 가맹점은 본인 발주만 조회 가능
+     */
+    public EnrollmentDto.OrderResponse getOrder(Long orderId, Long requesterId, boolean headquarters) {
+        Enrollment order = enrollmentRepository.findById(orderId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 발주입니다: " + orderId));
+
+        if (!headquarters && !order.isOwnedBy(requesterId)) {
+            throw new SecurityException("본인 가맹점의 발주만 조회할 수 있습니다");
+        }
+
+        return EnrollmentDto.OrderResponse.from(order, toProductSummary(order.getCourseId()));
+    }
+
+    /**
+     * 내부 API: 가맹점이 입고 완료(RECEIVED)한 상품 ID 목록
+     */
+    public EnrollmentDto.StoreOrderHistoryResponse getReceivedProductIds(Long storeId) {
+        List<Long> receivedProductIds = enrollmentRepository
+                .findByUserIdAndStatus(storeId, Enrollment.Status.RECEIVED)
                 .stream()
                 .map(Enrollment::getCourseId)
                 .collect(Collectors.toList());
 
-        return EnrollmentDto.EnrollmentHistoryResponse.builder()
-                .userId(userId)
-                .activeCourseIds(activeCourseIds)
+        return EnrollmentDto.StoreOrderHistoryResponse.builder()
+                .userId(storeId)
+                .receivedProductIds(receivedProductIds)
                 .build();
+    }
+
+    // ---------------------------------------------------------------- private
+
+    private List<EnrollmentDto.OrderResponse> toResponsesWithProduct(List<Enrollment> orders) {
+        return orders.stream()
+                .map(order -> EnrollmentDto.OrderResponse.from(order, toProductSummary(order.getCourseId())))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 상품 정보 조립
+     * - 상품 서비스 장애 시 발주 목록 자체가 실패하지 않도록 null 로 대체한다.
+     */
+    private EnrollmentDto.ProductSummary toProductSummary(Long productId) {
+        try {
+            Map<String, Object> product = courseServiceClient.getProduct(productId);
+
+            return EnrollmentDto.ProductSummary.builder()
+                    .id(toLong(product.get("id")))
+                    .name((String) product.get("title"))
+                    .description((String) product.get("description"))
+                    .category(normalizeCategory((String) product.get("category")))
+                    .supplyPrice(toBigDecimal(product.get("price")))
+                    .stockQuantity(toInteger(
+                            firstNonNullObject(
+                                    product.get("enrollmentCount"),
+                                    product.get("enrollment_count")
+                            )
+                    ))
+                    .build();
+        } catch (RuntimeException e) {
+            log.warn("[EnrollmentService] 상품 정보 조회 실패로 상품 정보 없이 응답 - productId: {}, error: {}",
+                    productId, e.getMessage());
+            return null;
+        }
+    }
+
+    private BigDecimal getSupplyPrice(Long productId) {
+        Map<String, Object> product = courseServiceClient.getProduct(productId);
+        BigDecimal supplyPrice = toBigDecimal(product.get("price"));
+
+        if (supplyPrice == null) {
+            throw new IllegalStateException("상품 공급가를 확인할 수 없습니다: " + productId);
+        }
+        return supplyPrice;
     }
 
     private String normalizeCategory(String category) {
         if (category == null) return null;
 
         return switch (category) {
-            case "BACKEND" -> "백엔드";
-            case "FRONTEND" -> "프론트엔드";
-            case "DEVOPS" -> "DevOps";
-            case "DATA" -> "데이터";
-            case "AI" -> "AI";
+            case "DRINK" -> "음료";
+            case "FOOD" -> "식품";
+            case "DAILY" -> "생활용품";
+            case "OTHER" -> "기타";
             default -> category;
         };
     }
@@ -154,13 +256,11 @@ public class EnrollmentService {
         return Integer.parseInt(value.toString());
     }
 
-    private String firstNonNull(String... values) {
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
-        }
-        return null;
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) return null;
+        if (value instanceof BigDecimal decimal) return decimal;
+        if (value instanceof Number number) return BigDecimal.valueOf(number.doubleValue());
+        return new BigDecimal(value.toString());
     }
 
     private Object firstNonNullObject(Object... values) {

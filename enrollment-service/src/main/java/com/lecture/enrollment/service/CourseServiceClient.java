@@ -8,6 +8,13 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.Map;
 
+/**
+ * 상품 서비스(course-service) 호출 클라이언트
+ * - course-service는 이번 변경 대상이 아니므로 URL과 응답 필드명은 기존 그대로 사용한다.
+ *   courses.title            -> 상품명
+ *   courses.price            -> 공급가
+ *   courses.enrollment_count -> 가맹점 재고 수량
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -16,94 +23,81 @@ public class CourseServiceClient {
     private final WebClient.Builder webClientBuilder;
 
     /**
-     * Course Service: 강의 존재 여부 확인 (동기 REST)
+     * 상품 존재 여부 확인 (발주 생성 전 검증)
      */
-    public boolean existsCourse(Long courseId) {
+    public boolean existsProduct(Long productId) {
         try {
             Boolean exists = webClientBuilder.build()
                     .get()
-                    .uri("http://course-service/api/courses/internal/exists/{id}", courseId)
+                    .uri("http://course-service/api/courses/internal/exists/{id}", productId)
                     .retrieve()
                     .bodyToMono(Boolean.class)
                     .block();
 
             return Boolean.TRUE.equals(exists);
         } catch (Exception e) {
-            log.error("[CourseServiceClient] 강의 존재 확인 실패 - courseId: {}, error: {}",
-                    courseId, e.getMessage());
-            throw new RuntimeException("Course Service 연결 실패");
+            log.error("[CourseServiceClient] 상품 존재 확인 실패 - productId: {}, error: {}",
+                    productId, e.getMessage());
+            throw new RuntimeException("Product Service 연결 실패");
         }
     }
 
     /**
-     * Course Service: 강의 상세 조회
-     * - 내 수강 목록 응답에 course 정보를 붙일 때 사용
-     * - course-service 쪽에 GET /api/courses/internal/{id} 엔드포인트가 있어야 함
+     * 상품 상세 조회
+     * - 발주 목록/상세 응답에 상품 정보를 붙일 때 사용
+     * - 정산 금액(공급가) 계산에도 사용
      */
-    public Map<String, Object> getCourse(Long courseId) {
+    public Map<String, Object> getProduct(Long productId) {
         try {
             Map<String, Object> responseBody = webClientBuilder.build()
                     .get()
-                    .uri("http://course-service/api/courses/internal/{id}", courseId)
+                    .uri("http://course-service/api/courses/internal/{id}", productId)
                     .retrieve()
                     .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
                     .block();
 
             if (responseBody == null) {
-                throw new RuntimeException("Course Service 응답 본문이 비어 있습니다.");
+                throw new RuntimeException("Product Service 응답 본문이 비어 있습니다.");
             }
 
-            log.info("[CourseServiceClient] 강의 상세 조회 성공 - courseId: {}", courseId);
-            log.debug("[CourseServiceClient] 강의 상세 응답 - courseId: {}, body: {}", courseId, responseBody);
+            log.debug("[CourseServiceClient] 상품 상세 조회 성공 - productId: {}, body: {}", productId, responseBody);
 
             /*
-             * 응답 형태가 다음 둘 중 하나일 수 있으므로 둘 다 처리
-             *
-             * 1) 래퍼 응답
-             * {
-             *   "success": true,
-             *   "message": "성공",
-             *   "data": { ...course fields... }
-             * }
-             *
-             * 2) 바로 강의 객체 반환
-             * {
-             *   "id": 1,
-             *   "title": "...",
-             *   ...
-             * }
+             * 응답이 공통 래퍼({success, message, data})로 오는 경우와
+             * 상품 객체가 그대로 오는 경우를 모두 처리한다.
              */
             Object data = responseBody.get("data");
             if (data instanceof Map<?, ?> dataMap) {
                 @SuppressWarnings("unchecked")
-                Map<String, Object> courseMap = (Map<String, Object>) dataMap;
-                return courseMap;
+                Map<String, Object> productMap = (Map<String, Object>) dataMap;
+                return productMap;
             }
 
             return responseBody;
         } catch (Exception e) {
-            log.error("[CourseServiceClient] 강의 상세 조회 실패 - courseId: {}, error: {}",
-                    courseId, e.getMessage());
-            throw new RuntimeException("Course Service 강의 상세 조회 실패");
+            log.error("[CourseServiceClient] 상품 상세 조회 실패 - productId: {}, error: {}",
+                    productId, e.getMessage());
+            throw new RuntimeException("Product Service 상품 상세 조회 실패");
         }
     }
 
     /**
-     * Course Service: 수강생 수 증가 (수강 활성화 시 호출)
+     * 가맹점 재고 수량 증가 (입고 확인 시 호출)
+     * - course-service의 기존 enrollment-count 증가 엔드포인트를 재고 증가 용도로 사용한다.
      */
-    public void increaseEnrollmentCount(Long courseId) {
+    public void increaseStock(Long productId) {
         try {
             webClientBuilder.build()
                     .post()
-                    .uri("http://course-service/api/courses/internal/{id}/enrollment-count", courseId)
+                    .uri("http://course-service/api/courses/internal/{id}/enrollment-count", productId)
                     .retrieve()
                     .toBodilessEntity()
                     .block();
 
-            log.info("[CourseServiceClient] 수강생 수 증가 완료 - courseId: {}", courseId);
+            log.info("[CourseServiceClient] 재고 수량 증가 완료 - productId: {}", productId);
         } catch (Exception e) {
-            log.error("[CourseServiceClient] 수강생 수 증가 실패 - courseId: {}, error: {}",
-                    courseId, e.getMessage());
+            log.error("[CourseServiceClient] 재고 수량 증가 실패 - productId: {}, error: {}",
+                    productId, e.getMessage());
         }
     }
 }

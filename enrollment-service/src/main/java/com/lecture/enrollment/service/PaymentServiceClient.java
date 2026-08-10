@@ -9,6 +9,11 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import java.math.BigDecimal;
 
+/**
+ * 정산 서비스(payment-service) 호출 클라이언트
+ * - payment-service는 이번 변경 대상이 아니므로 요청/응답 스펙은 기존 그대로 사용한다.
+ * - 본사 발주 승인 시점에 가맹점 정산을 요청한다.
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -17,39 +22,44 @@ public class PaymentServiceClient {
     private final WebClient.Builder webClientBuilder;
 
     /**
-     * Payment Service: 결제 요청 (동기 REST)
+     * 정산 요청 (동기 REST)
+     *
+     * @param storeId   가맹점 관리자 ID
+     * @param productId 상품 ID
+     * @param amount    정산 금액 (상품 공급가)
      */
-    public PaymentResult requestPayment(Long userId, Long courseId, BigDecimal amount) {
+    public SettlementResult requestSettlement(Long storeId, Long productId, BigDecimal amount) {
         try {
-            PaymentRequest request = new PaymentRequest(userId, courseId, amount);
+            SettlementRequest request = new SettlementRequest(storeId, productId, amount);
 
-            PaymentResult result = webClientBuilder.build()
+            SettlementResult result = webClientBuilder.build()
                     .post()
                     .uri("http://payment-service:8084/api/payments/internal/request")
                     .bodyValue(request)
                     .retrieve()
-                    .bodyToMono(PaymentResult.class)
+                    .bodyToMono(SettlementResult.class)
                     .block();
 
-            log.info("[PaymentServiceClient] 결제 요청 완료 - userId: {}, courseId: {}, result: {}",
-                    userId, courseId, result != null ? result.getStatus() : "null");
+            log.info("[PaymentServiceClient] 정산 요청 완료 - storeId: {}, productId: {}, amount: {}, result: {}",
+                    storeId, productId, amount, result != null ? result.getStatus() : "null");
 
             return result;
         } catch (Exception e) {
-            log.error("[PaymentServiceClient] 결제 요청 실패 - userId: {}, courseId: {}, error: {}",
-                    userId, courseId, e.getMessage(), e);
-            throw new RuntimeException("Payment Service 연결 실패");
+            log.error("[PaymentServiceClient] 정산 요청 실패 - storeId: {}, productId: {}, error: {}",
+                    storeId, productId, e.getMessage(), e);
+            throw new RuntimeException("Settlement Service 연결 실패");
         }
     }
 
+    /** payment-service 내부 API 요청 본문 (필드명은 기존 스펙 유지) */
     @Getter
     @NoArgsConstructor
-    static class PaymentRequest {
+    static class SettlementRequest {
         private Long userId;
         private Long courseId;
         private BigDecimal amount;
 
-        PaymentRequest(Long userId, Long courseId, BigDecimal amount) {
+        SettlementRequest(Long userId, Long courseId, BigDecimal amount) {
             this.userId = userId;
             this.courseId = courseId;
             this.amount = amount;
@@ -58,7 +68,7 @@ public class PaymentServiceClient {
 
     @Getter
     @NoArgsConstructor
-    public static class PaymentResult {
+    public static class SettlementResult {
         private Long paymentId;
         private String status; // COMPLETED / FAILED
     }
