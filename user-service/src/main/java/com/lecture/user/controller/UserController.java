@@ -23,7 +23,7 @@ public class UserController {
             @Valid @RequestBody UserDto.RegisterRequest request) {
         UserDto.UserResponse response = userService.register(request);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(UserDto.ApiResponse.success(response));
+                .body(UserDto.ApiResponse.success(response, "회원가입이 완료되었습니다"));
     }
 
     /**

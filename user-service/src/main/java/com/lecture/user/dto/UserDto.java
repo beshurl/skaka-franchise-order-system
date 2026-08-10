@@ -30,7 +30,8 @@ public class UserDto {
         @NotBlank(message = "이름은 필수입니다")
         private String name;
 
-        private User.Role role; // STUDENT or INSTRUCTOR
+        // private User.Role role; // STUDENT or INSTRUCTOR
+        private DomainRole role;   // User.Role → DomainRole
     }
 
     // 사용자 정보 응답
@@ -42,7 +43,8 @@ public class UserDto {
         private Long id;
         private String email;
         private String name;
-        private User.Role role;
+        // private User.Role role;
+        private DomainRole role;   // User.Role → DomainRole
         private LocalDateTime createdAt;
 
         public static UserResponse from(User user) {
@@ -50,7 +52,7 @@ public class UserDto {
                     .id(user.getId())
                     .email(user.getEmail())
                     .name(user.getName())
-                    .role(user.getRole())
+                    .role(DomainRole.from(user.getRole()))
                     .createdAt(user.getCreatedAt())
                     .build();
         }
@@ -74,11 +76,35 @@ public class UserDto {
                     .build();
         }
 
+        // 응답 message 추가용
+        public static <T> ApiResponse<T> success(T data, String message) {
+            return ApiResponse.<T>builder()
+                    .success(true)
+                    .message(message)
+                    .data(data)
+                    .build();
+        }
+
         public static <T> ApiResponse<T> error(String message) {
             return ApiResponse.<T>builder()
                     .success(false)
                     .message(message)
                     .build();
+        }
+    }
+
+    public enum DomainRole {
+        STORE_ADMIN(User.Role.STUDENT),
+        HEADQUARTERS_ADMIN(User.Role.INSTRUCTOR);
+
+        private final User.Role dbRole;
+
+        DomainRole(User.Role dbRole) { this.dbRole = dbRole; }
+
+        public User.Role toDbRole() { return dbRole; }
+
+        public static DomainRole from(User.Role dbRole) {
+            return dbRole == User.Role.INSTRUCTOR ? HEADQUARTERS_ADMIN : STORE_ADMIN;
         }
     }
 }
