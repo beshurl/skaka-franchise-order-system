@@ -1,5 +1,6 @@
 package com.lecture.course.entity;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
@@ -60,8 +61,28 @@ public class Product {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
+    // vue-frontend(utils/business.js categoryMeta)의 8개 코드값을 정본으로 사용.
+    // 원본 템플릿 카테고리(BACKEND 등)로 요청이 와도 JsonCreator가 자동으로 매핑해준다.
     public enum Category {
-        DRINK, FOOD, DAILY, OTHER
+        FOOD, DRINK, DAILY, FRESH, SNACK, HYGIENE, CHILLED, OTHER;
+
+        @JsonCreator
+        public static Category from(String value) {
+            if (value == null) {
+                return null;
+            }
+            String normalized = value.trim().toUpperCase();
+            return switch (normalized) {
+                case "FOOD", "BACKEND" -> FOOD;
+                case "DRINK", "FRONTEND" -> DRINK;
+                case "DAILY", "DEVOPS" -> DAILY;
+                case "FRESH", "DATA_SCIENCE" -> FRESH;
+                case "SNACK", "MOBILE" -> SNACK;
+                case "HYGIENE", "SECURITY" -> HYGIENE;
+                case "CHILLED", "DATABASE" -> CHILLED;
+                default -> OTHER;
+            };
+        }
     }
 
     public enum Status {

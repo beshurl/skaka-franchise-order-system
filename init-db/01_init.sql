@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS courses (
     title            VARCHAR(255)    NOT NULL,
     description      TEXT,
     category         VARCHAR(50)     NOT NULL
-                     COMMENT 'DRINK | FOOD | DAILY | OTHER',
+                     COMMENT 'FOOD | DRINK | DAILY | FRESH | SNACK | HYGIENE | CHILLED | OTHER',
     price            DECIMAL(10,2)   NOT NULL,
     instructor_id    BIGINT          NOT NULL,
     enrollment_count INT             NOT NULL DEFAULT 0,
