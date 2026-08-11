@@ -35,8 +35,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class EnrollmentController {
 
-    private static final String ROLE_HEADQUARTERS = "HEADQUARTERS_ADMIN";
-    private static final String ROLE_STORE = "STORE_ADMIN";
+    // Gateway가 X-User-Role에 넣어 보내는 값은 DomainRole이 아니라 JWT의 원본 role 클레임
+    // (auth-server가 발급하는 값은 User.Role의 STUDENT/INSTRUCTOR 그대로임) 이라 그 값과 비교해야 한다.
+    private static final String ROLE_HEADQUARTERS = "INSTRUCTOR";
+    private static final String ROLE_STORE = "STUDENT";
 
     private final EnrollmentService enrollmentService;
 

@@ -13,9 +13,13 @@ export const categoryMeta = {
   DEVOPS: { label: '생활용품', code: 'DAILY', short: 'DL', tone: 'olive' },
   DAILY: { label: '생활용품', code: 'DAILY', short: 'DL', tone: 'olive' },
   DATA_SCIENCE: { label: '신선식품', code: 'FRESH', short: 'FR', tone: 'leaf' },
+  FRESH: { label: '신선식품', code: 'FRESH', short: 'FR', tone: 'leaf' },
   MOBILE: { label: '스낵', code: 'SNACK', short: 'SN', tone: 'amber' },
+  SNACK: { label: '스낵', code: 'SNACK', short: 'SN', tone: 'amber' },
   SECURITY: { label: '위생용품', code: 'HYGIENE', short: 'HG', tone: 'blue' },
+  HYGIENE: { label: '위생용품', code: 'HYGIENE', short: 'HG', tone: 'blue' },
   DATABASE: { label: '냉장식품', code: 'CHILLED', short: 'CH', tone: 'violet' },
+  CHILLED: { label: '냉장식품', code: 'CHILLED', short: 'CH', tone: 'violet' },
   OTHER: { label: '기타', code: 'OTHER', short: 'OT', tone: 'stone' }
 }
 

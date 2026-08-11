@@ -10,7 +10,7 @@ export const useCourseStore = defineStore('course', () => {
   const error = ref('')
   const selectedCategory = ref('전체')
 
-  const categories = ['전체', '간편식', '음료', '생활용품', '신선식품', '스낵', '기타']
+  const categories = ['전체', '간편식', '음료', '생활용품', '신선식품', '스낵', '위생용품', '냉장식품', '기타']
   const products = computed(() => courses.value)
   const selectedProduct = computed(() => selectedCourse.value)
 
