@@ -15,13 +15,13 @@ from app.model.schemas import (
 logger = logging.getLogger(__name__)
 
 CATEGORY_LABELS = {
-    CourseCategory.BACKEND: "간편식",
-    CourseCategory.FRONTEND: "음료",
-    CourseCategory.DEVOPS: "생활용품",
-    CourseCategory.DATA_SCIENCE: "신선식품",
-    CourseCategory.MOBILE: "스낵",
-    CourseCategory.SECURITY: "위생용품",
-    CourseCategory.DATABASE: "냉장식품",
+    CourseCategory.FOOD: "간편식",
+    CourseCategory.DRINK: "음료",
+    CourseCategory.DAILY: "생활용품",
+    CourseCategory.FRESH: "신선식품",
+    CourseCategory.SNACK: "스낵",
+    CourseCategory.HYGIENE: "위생용품",
+    CourseCategory.CHILLED: "냉장식품",
     CourseCategory.OTHER: "기타",
 }
 

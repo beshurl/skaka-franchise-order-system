@@ -10,6 +10,14 @@
       <router-link v-if="auth.isHeadquarters" to="/courses/new" class="btn btn-primary">상품 등록</router-link>
     </template>
 
+    <RecommendationPanel
+      v-if="auth.isStore"
+      :response="recommendationResponse"
+      :loading="recommendationLoading"
+      :error="recommendationError"
+      @retry="fetchRecommendations"
+    />
+
     <section class="catalog-toolbar" aria-label="상품 검색과 필터">
       <label class="search-field">
         <span class="sr-only">상품 검색</span>
@@ -62,13 +70,18 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import ProductCard from '@/components/ProductCard.vue'
+import RecommendationPanel from '@/components/RecommendationPanel.vue'
 import WorkspaceShell from '@/components/WorkspaceShell.vue'
+import { recommendApi } from '@/api/recommend.js'
 import { useAuthStore } from '@/store/auth.js'
 import { useCourseStore } from '@/store/course.js'
 
 const auth = useAuthStore()
 const courseStore = useCourseStore()
 const search = ref('')
+const recommendationResponse = ref(null)
+const recommendationLoading = ref(false)
+const recommendationError = ref('')
 
 const selectedCategory = computed(() => courseStore.selectedCategory)
 const filteredProducts = computed(() => {
@@ -80,7 +93,30 @@ const filteredProducts = computed(() => {
   })
 })
 
-onMounted(() => courseStore.fetchCourses())
+async function fetchRecommendations() {
+  if (!auth.isStore || !auth.user?.id) return
+
+  recommendationLoading.value = true
+  recommendationError.value = ''
+
+  try {
+    const response = await recommendApi.getForStore(auth.user.id)
+    recommendationResponse.value = response.data?.data ?? response.data
+  } catch (error) {
+    recommendationResponse.value = null
+    recommendationError.value = error.response?.data?.detail
+      || error.response?.data?.message
+      || '추천 데이터를 불러오는 중 문제가 발생했습니다.'
+    console.error('[CourseListView] 추천 상품 조회 실패:', error)
+  } finally {
+    recommendationLoading.value = false
+  }
+}
+
+onMounted(() => {
+  courseStore.fetchCourses()
+  fetchRecommendations()
+})
 </script>
 
 <style scoped>
