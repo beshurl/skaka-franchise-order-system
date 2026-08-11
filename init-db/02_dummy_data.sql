@@ -6,6 +6,28 @@ UPDATE enrollments SET status = 'REQUESTED' WHERE status = 'PENDING';
 UPDATE enrollments SET status = 'RECEIVED' WHERE status = 'ACTIVE';
 UPDATE enrollments SET status = 'REJECTED' WHERE status = 'CANCELLED';
 
+-- 이전 온라인 강의 카테고리 값을 편의점 상품 카테고리로 정규화한다.
+UPDATE courses
+SET category = CASE category
+    WHEN 'FRONTEND' THEN 'DRINK'
+    WHEN 'BACKEND' THEN 'FOOD'
+    WHEN 'MOBILE' THEN 'SNACK'
+    WHEN 'DATA_SCIENCE' THEN 'FRESH'
+    WHEN 'SECURITY' THEN 'HYGIENE'
+    WHEN 'DEVOPS' THEN 'DAILY'
+    WHEN 'DATABASE' THEN 'CHILLED'
+    ELSE category
+END
+WHERE category IN (
+    'FRONTEND',
+    'BACKEND',
+    'MOBILE',
+    'DATA_SCIENCE',
+    'SECURITY',
+    'DEVOPS',
+    'DATABASE'
+);
+
 -- 로그인 계정
 -- 가맹점: store.demo@storelink.kr / store1234
 -- 본사  : hq.demo@storelink.kr    / hq1234
@@ -22,17 +44,17 @@ ON DUPLICATE KEY UPDATE
 INSERT INTO courses
     (id, title, description, category, price, instructor_id, enrollment_count, status, created_at, updated_at)
 VALUES
-    (101, '제주 삼다수 500ml', '냉장 진열에 적합한 생수 낱병 상품', 'FRONTEND', 650.00, 102, 84, 'ACTIVE', NOW(6), NOW(6)),
-    (102, '제로 콜라 355ml', '무설탕 탄산음료 캔 상품', 'FRONTEND', 980.00, 102, 72, 'ACTIVE', NOW(6), NOW(6)),
-    (103, '아메리카노 컵커피', '출근 시간대 판매용 냉장 컵커피', 'FRONTEND', 1450.00, 102, 46, 'ACTIVE', NOW(6), NOW(6)),
-    (104, '참치마요 삼각김밥', '간편하게 취식 가능한 냉장 삼각김밥', 'BACKEND', 1050.00, 102, 39, 'ACTIVE', NOW(6), NOW(6)),
-    (105, '직화 불고기 도시락', '전자레인지 조리용 간편 도시락', 'BACKEND', 3900.00, 102, 24, 'ACTIVE', NOW(6), NOW(6)),
-    (106, '감자칩 오리지널', '기본 맛 봉지 스낵', 'MOBILE', 1200.00, 102, 67, 'ACTIVE', NOW(6), NOW(6)),
-    (107, '초코 크림 쿠키', '개별 포장 간식 상품', 'MOBILE', 900.00, 102, 58, 'ACTIVE', NOW(6), NOW(6)),
-    (108, '프리미엄 바나나', '낱개 판매용 신선 과일', 'DATA_SCIENCE', 1100.00, 102, 31, 'ACTIVE', NOW(6), NOW(6)),
-    (109, '데일리 물티슈 20매', '휴대용 위생 물티슈', 'SECURITY', 1350.00, 102, 76, 'ACTIVE', NOW(6), NOW(6)),
-    (110, '여행용 칫솔 세트', '칫솔과 치약으로 구성된 휴대용 세트', 'DEVOPS', 2100.00, 102, 43, 'ACTIVE', NOW(6), NOW(6)),
-    (111, '신선 우유 900ml', '냉장 보관 일반 흰 우유', 'DATABASE', 2350.00, 102, 28, 'ACTIVE', NOW(6), NOW(6)),
+    (101, '제주 삼다수 500ml', '냉장 진열에 적합한 생수 낱병 상품', 'DRINK', 650.00, 102, 84, 'ACTIVE', NOW(6), NOW(6)),
+    (102, '제로 콜라 355ml', '무설탕 탄산음료 캔 상품', 'DRINK', 980.00, 102, 72, 'ACTIVE', NOW(6), NOW(6)),
+    (103, '아메리카노 컵커피', '출근 시간대 판매용 냉장 컵커피', 'DRINK', 1450.00, 102, 46, 'ACTIVE', NOW(6), NOW(6)),
+    (104, '참치마요 삼각김밥', '간편하게 취식 가능한 냉장 삼각김밥', 'FOOD', 1050.00, 102, 39, 'ACTIVE', NOW(6), NOW(6)),
+    (105, '직화 불고기 도시락', '전자레인지 조리용 간편 도시락', 'FOOD', 3900.00, 102, 24, 'ACTIVE', NOW(6), NOW(6)),
+    (106, '감자칩 오리지널', '기본 맛 봉지 스낵', 'SNACK', 1200.00, 102, 67, 'ACTIVE', NOW(6), NOW(6)),
+    (107, '초코 크림 쿠키', '개별 포장 간식 상품', 'SNACK', 900.00, 102, 58, 'ACTIVE', NOW(6), NOW(6)),
+    (108, '프리미엄 바나나', '낱개 판매용 신선 과일', 'FRESH', 1100.00, 102, 31, 'ACTIVE', NOW(6), NOW(6)),
+    (109, '데일리 물티슈 20매', '휴대용 위생 물티슈', 'HYGIENE', 1350.00, 102, 76, 'ACTIVE', NOW(6), NOW(6)),
+    (110, '여행용 칫솔 세트', '칫솔과 치약으로 구성된 휴대용 세트', 'DAILY', 2100.00, 102, 43, 'ACTIVE', NOW(6), NOW(6)),
+    (111, '신선 우유 900ml', '냉장 보관 일반 흰 우유', 'CHILLED', 2350.00, 102, 28, 'ACTIVE', NOW(6), NOW(6)),
     (112, 'AA 건전지 4입', '생활용품 코너용 알카라인 건전지', 'OTHER', 3200.00, 102, 52, 'ACTIVE', NOW(6), NOW(6))
 ON DUPLICATE KEY UPDATE
     title = VALUES(title),
