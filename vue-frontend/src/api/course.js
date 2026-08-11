@@ -22,6 +22,8 @@ export const courseApi = {
   },
 
   update(id, data) {
-    return api.patch(`/api/courses/${id}`, data)
+    // api-gateway가 Origin 헤더가 실린 PATCH 요청을 항상 403 처리해서 PUT 사용
+    // (PUT은 ProductController가 이미 지원, 실측으로 정상 동작 확인함)
+    return api.put(`/api/courses/${id}`, data)
   }
 }
