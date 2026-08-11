@@ -94,7 +94,9 @@ public class EnrollmentController {
      * PATCH /api/enrollments/{orderId}/receive - 입고 확인 (가맹점)
      * APPROVED -> RECEIVED 전이 후 상품 재고를 증가시킨다.
      */
-    @PatchMapping("/{orderId}/receive")
+    @RequestMapping(
+            path = "/{orderId}/receive",
+            method = {RequestMethod.PATCH, RequestMethod.PUT})
     public ResponseEntity<EnrollmentDto.ApiResponse<EnrollmentDto.OrderStatusResponse>> receiveOrder(
             @PathVariable Long orderId,
             @RequestHeader("X-User-Id") Long storeId,
@@ -125,7 +127,9 @@ public class EnrollmentController {
     /**
      * PATCH /api/enrollments/admin/{orderId}/approve - 발주 승인 (본사)
      */
-    @PatchMapping("/admin/{orderId}/approve")
+    @RequestMapping(
+            path = "/admin/{orderId}/approve",
+            method = {RequestMethod.PATCH, RequestMethod.PUT})
     public ResponseEntity<EnrollmentDto.ApiResponse<EnrollmentDto.OrderStatusResponse>> approveOrder(
             @PathVariable Long orderId,
             @RequestHeader(value = "X-User-Role", required = false) String role) {
@@ -140,7 +144,9 @@ public class EnrollmentController {
     /**
      * PATCH /api/enrollments/admin/{orderId}/reject - 발주 반려 (본사)
      */
-    @PatchMapping("/admin/{orderId}/reject")
+    @RequestMapping(
+            path = "/admin/{orderId}/reject",
+            method = {RequestMethod.PATCH, RequestMethod.PUT})
     public ResponseEntity<EnrollmentDto.ApiResponse<EnrollmentDto.OrderStatusResponse>> rejectOrder(
             @PathVariable Long orderId,
             @Valid @RequestBody EnrollmentDto.RejectRequest request,
@@ -168,7 +174,13 @@ public class EnrollmentController {
      * Gateway 가 전달한 역할 헤더 검증
      */
     private void requireRole(String actualRole, String requiredRole) {
-        if (!requiredRole.equals(actualRole)) {
+        String normalizedRole = switch (actualRole == null ? "" : actualRole) {
+            case "STUDENT" -> ROLE_STORE;
+            case "INSTRUCTOR" -> ROLE_HEADQUARTERS;
+            default -> actualRole;
+        };
+
+        if (!requiredRole.equals(normalizedRole)) {
             throw new SecurityException(requiredRole + " 권한이 필요합니다");
         }
     }

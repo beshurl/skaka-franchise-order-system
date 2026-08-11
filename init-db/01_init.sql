@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
     password    VARCHAR(255)    NOT NULL,
     name        VARCHAR(100)    NOT NULL,
     role        VARCHAR(30)     NOT NULL
-                COMMENT 'HEADQUARTERS_ADMIN | STORE_ADMIN',
+                COMMENT 'STUDENT(가맹점) | INSTRUCTOR(본사)',
     created_at  DATETIME(6),
     updated_at  DATETIME(6),
     PRIMARY KEY (id)

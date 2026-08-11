@@ -2,6 +2,8 @@
 # /recommend-service/app/config/setting.py (아무 설정도 없을 경우 이 셋팅으로 동작 - 기본값)
 # /recommend-service/.env (개발 환경 : 로컬 직접 실행용)
 
+from typing import Optional
+
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -25,6 +27,11 @@ class Settings(BaseSettings):
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_consumer_group_id: str = "recommend-service"
     kafka_topic_enrollment_completed: str = "enrollment.completed"
+
+    # Gemini (키가 없으면 규칙 기반 추천으로 자동 전환)
+    gemini_api_key: Optional[str] = None
+    gemini_model: str = "gemini-3.6-flash"
+    gemini_timeout_seconds: float = 20.0
 
     class Config:
         env_file = ".env"

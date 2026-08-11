@@ -1,105 +1,176 @@
 import logging
 from collections import Counter
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from app.client.course_client import course_client
 from app.client.enrollment_client import enrollment_client
-from app.model.schemas import CourseCategory, CourseResponse, RecommendResponse
+from app.config.settings import settings
+from app.model.schemas import (
+    CourseCategory,
+    CourseResponse,
+    RecommendResponse,
+    RecommendationItem,
+)
+from app.service.ai_ranker import ai_ranker
 
 logger = logging.getLogger(__name__)
 
 
+CATEGORY_LABELS: Dict[CourseCategory, str] = {
+    CourseCategory.BACKEND: "간편식",
+    CourseCategory.FRONTEND: "음료",
+    CourseCategory.DEVOPS: "생활용품",
+    CourseCategory.DATA_SCIENCE: "신선식품",
+    CourseCategory.MOBILE: "스낵",
+    CourseCategory.SECURITY: "위생용품",
+    CourseCategory.DATABASE: "냉장식품",
+    CourseCategory.OTHER: "기타",
+}
+
+
 class RecommendService:
     """
-    규칙 기반 강의 추천 서비스
-
-    추천 규칙:
-    1. 사용자의 수강 중인 강의 카테고리 분석
-    2. 가장 많이 수강한 카테고리 선택 (최빈 카테고리)
-    3. 해당 카테고리에서 미수강 강의 조회
-    4. 수강생 수 기준 내림차순 정렬하여 반환
-    5. 수강 이력 없으면 전체 강의 중 인기순 반환
+    가맹점 입고 이력과 상품 정보를 기반으로 후보를 만들고,
+    Gemini가 설정된 경우 후보 안에서 순위와 추천 근거를 보완한다.
     """
 
-    MAX_RECOMMEND_COUNT = 5  # 최대 추천 강의 수
+    MAX_RECOMMEND_COUNT = 5
+    MAX_AI_CANDIDATE_COUNT = 8
 
     async def get_recommendations(self, user_id: int) -> RecommendResponse:
-        logger.info(f"[RecommendService] 추천 시작 - userId: {user_id}")
+        logger.info("[RecommendService] 추천 시작 - storeId: %s", user_id)
 
-        # 1. 수강 이력 조회
         history = await enrollment_client.get_enrollment_history(user_id)
-        active_course_ids = history.activeCourseIds
+        received_ids = history.receivedProductIds
+        all_products = await course_client.get_all_courses()
+        active_products = [p for p in all_products if p.status == "ACTIVE"]
 
-        # 2. 수강 이력 없는 신규 사용자 처리
-        if not active_course_ids:
-            return await self._recommend_for_new_user(user_id)
+        dominant_category = self._find_dominant_category(
+            received_ids, active_products
+        )
+        candidates = [p for p in active_products if p.id not in received_ids]
+        if not candidates:
+            candidates = active_products
 
-        # 3. 수강한 강의의 카테고리 분석 → 최빈 카테고리 선택
-        dominant_category = await self._find_dominant_category(active_course_ids)
-        if not dominant_category:
-            return await self._recommend_for_new_user(user_id)
-
-        # 4. 최빈 카테고리 기반 미수강 강의 조회
-        recommended = await course_client.get_recommend_courses(
-            category=dominant_category,
-            exclude_ids=active_course_ids
+        fallback_items = self._rank_candidates(candidates, dominant_category)
+        final_items, analysis_mode = await self._apply_ai_ranking(
+            fallback_items,
+            dominant_category,
+            received_ids,
         )
 
-        # 5. 최대 추천 수 제한
-        recommended = recommended[:self.MAX_RECOMMEND_COUNT]
-
-        logger.info(f"[RecommendService] 추천 완료 - userId: {user_id}, "
-                    f"category: {dominant_category}, count: {len(recommended)}")
+        if not final_items:
+            message = "현재 추천할 수 있는 활성 상품이 없습니다."
+        elif analysis_mode == "AI":
+            message = "입고 이력과 상품 데이터를 AI가 분석한 발주 추천입니다."
+        else:
+            message = "입고 이력과 상품 데이터를 기준으로 계산한 발주 추천입니다."
 
         return RecommendResponse(
             userId=user_id,
-            recommendedCourses=recommended,
+            recommendedCourses=[item.product for item in final_items],
+            recommendations=final_items,
             basedOnCategory=dominant_category,
-            message=f"{dominant_category.value} 카테고리 기반 추천 강의입니다"
+            message=message,
+            analysisMode=analysis_mode,
+            model=settings.gemini_model if analysis_mode == "AI" else None,
         )
 
-    async def _find_dominant_category(
-        self, course_ids: List[int]
+    def _find_dominant_category(
+        self,
+        product_ids: List[int],
+        products: List[CourseResponse],
     ) -> Optional[CourseCategory]:
-        """
-        수강한 강의들의 카테고리 분석 → 최빈 카테고리 반환
-        Course Service에서 각 강의 정보를 조회하여 카테고리 집계
-        """
-        all_courses = await course_client.get_all_courses()
-        course_map = {c.id: c for c in all_courses}
-
+        product_map = {product.id: product for product in products}
         categories = [
-            course_map[cid].category
-            for cid in course_ids
-            if cid in course_map
+            product_map[product_id].category
+            for product_id in product_ids
+            if product_id in product_map
         ]
-
-        if not categories:
-            return None
-
-        # Counter로 최빈 카테고리 선택
         most_common = Counter(categories).most_common(1)
         return most_common[0][0] if most_common else None
 
-    async def _recommend_for_new_user(self, user_id: int) -> RecommendResponse:
-        """
-        신규 사용자: 수강생 수 기준 전체 인기 강의 추천
-        """
-        logger.info(f"[RecommendService] 신규 사용자 추천 - userId: {user_id}")
+    def _rank_candidates(
+        self,
+        products: List[CourseResponse],
+        dominant_category: Optional[CourseCategory],
+    ) -> List[RecommendationItem]:
+        ranked: List[RecommendationItem] = []
 
-        all_courses = await course_client.get_all_courses()
-        popular = sorted(
-            all_courses,
-            key=lambda c: c.enrollmentCount,
-            reverse=True
-        )[:self.MAX_RECOMMEND_COUNT]
+        for product in products:
+            category_match = dominant_category == product.category
+            stock_signal = max(0, min(product.enrollmentCount, 100))
+            score = min(100, 50 + (30 if category_match else 0) + stock_signal // 5)
+            category_label = CATEGORY_LABELS[product.category]
 
-        return RecommendResponse(
-            userId=user_id,
-            recommendedCourses=popular,
-            basedOnCategory=None,
-            message="인기 강의 추천입니다"
+            if category_match:
+                reason = (
+                    f"최근 입고한 {category_label} 상품과 같은 분류로 함께 검토하기 좋습니다."
+                )
+                signals = ["최근 입고 카테고리 일치", "현재 발주 가능"]
+            else:
+                reason = (
+                    f"현재 발주 가능한 {category_label} 상품으로 품목 구성을 넓힐 수 있습니다."
+                )
+                signals = ["현재 발주 가능", f"재고 지표 {product.enrollmentCount}"]
+
+            ranked.append(
+                RecommendationItem(
+                    product=product,
+                    score=score,
+                    reason=reason,
+                    signals=signals,
+                )
+            )
+
+        return sorted(
+            ranked,
+            key=lambda item: (item.score, item.product.enrollmentCount),
+            reverse=True,
+        )[: self.MAX_AI_CANDIDATE_COUNT]
+
+    async def _apply_ai_ranking(
+        self,
+        fallback_items: List[RecommendationItem],
+        dominant_category: Optional[CourseCategory],
+        received_ids: List[int],
+    ) -> Tuple[List[RecommendationItem], str]:
+        ai_payload = await ai_ranker.rank(
+            fallback_items,
+            dominant_category,
+            received_ids,
         )
+        if not ai_payload:
+            return fallback_items[: self.MAX_RECOMMEND_COUNT], "RULE_BASED"
+
+        candidate_map = {item.product.id: item for item in fallback_items}
+        selected: List[RecommendationItem] = []
+        selected_ids = set()
+
+        for ai_item in ai_payload.recommendations:
+            fallback = candidate_map.get(ai_item.productId)
+            if not fallback or ai_item.productId in selected_ids:
+                continue
+            selected.append(
+                RecommendationItem(
+                    product=fallback.product,
+                    score=fallback.score,
+                    reason=ai_item.reason,
+                    signals=ai_item.signals[:3],
+                )
+            )
+            selected_ids.add(ai_item.productId)
+            if len(selected) == self.MAX_RECOMMEND_COUNT:
+                break
+
+        for fallback in fallback_items:
+            if len(selected) == self.MAX_RECOMMEND_COUNT:
+                break
+            if fallback.product.id not in selected_ids:
+                selected.append(fallback)
+                selected_ids.add(fallback.product.id)
+
+        return selected, "AI" if selected else "RULE_BASED"
 
 
 recommend_service = RecommendService()
