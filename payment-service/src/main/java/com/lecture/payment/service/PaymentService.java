@@ -104,4 +104,13 @@ public class PaymentService {
                 .map(PaymentDto.PaymentResponse::from)
                 .collect(Collectors.toList());
     }
+
+    /**
+     * 전체 결제(정산) 내역 조회 (본사)
+     */
+    public List<PaymentDto.PaymentResponse> getAllPayments() {
+        return paymentRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(PaymentDto.PaymentResponse::from)
+                .collect(Collectors.toList());
+    }
 }

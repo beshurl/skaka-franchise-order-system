@@ -61,6 +61,9 @@
             <span v-if="auth.isHeadquarters">가맹점 ID {{ order.storeId || '-' }}</span>
             <span>상품 ID {{ order.productId }}</span>
           </div>
+          <p v-if="order.status === 'REJECTED' && order.rejectReason" class="reject-reason">
+            반려 사유: {{ order.rejectReason }}
+          </p>
         </div>
 
         <dl class="amount-block">
@@ -173,14 +176,17 @@ async function updateOrder(order, action) {
   updatingId.value = order.id
   try {
     if (action === 'approve') await enrollmentApi.approve(order.id)
+    let rejectReason = ''
     if (action === 'reject') {
-      const reason = window.prompt('반려 사유를 입력해 주세요.')
-      if (!reason) { updatingId.value = null; return }
-      await enrollmentApi.reject(order.id, reason)
+      rejectReason = window.prompt('반려 사유를 입력해 주세요.')
+      if (!rejectReason) { updatingId.value = null; return }
+      await enrollmentApi.reject(order.id, rejectReason)
     }
     if (action === 'receive') await enrollmentApi.receive(order.id)
     const nextStatus = { approve: 'APPROVED', reject: 'REJECTED', receive: 'RECEIVED' }[action]
-    orders.value = orders.value.map((item) => item.id === order.id ? normalizeOrder({ ...item, status: nextStatus }) : item)
+    orders.value = orders.value.map((item) => item.id === order.id
+      ? normalizeOrder({ ...item, status: nextStatus, rejectReason: rejectReason || item.rejectReason })
+      : item)
   } catch (error) {
     actionError.value = error.response?.data?.message || '상태 변경 API를 처리하지 못했습니다. Enrollment Service 구현 상태를 확인해 주세요.'
   } finally {
@@ -333,6 +339,12 @@ onMounted(loadOrders)
   gap: 12px;
   color: var(--color-muted);
   font-size: 10px;
+}
+
+.reject-reason {
+  margin: 8px 0 0;
+  color: var(--color-danger);
+  font-size: 11px;
 }
 
 .amount-block {

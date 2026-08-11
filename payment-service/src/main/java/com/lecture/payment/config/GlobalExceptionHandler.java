@@ -19,6 +19,13 @@ public class GlobalExceptionHandler {
                 .body(PaymentDto.ApiResponse.error(e.getMessage()));
     }
 
+    /** 본사/가맹점 권한 위반, 타 가맹점 결제 내역 접근 (course-service/enrollment-service와 동일한 컨벤션) */
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<PaymentDto.ApiResponse<Void>> handleSecurity(SecurityException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(PaymentDto.ApiResponse.error(e.getMessage()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<PaymentDto.ApiResponse<Void>> handleValidation(MethodArgumentNotValidException e) {
         String message = e.getBindingResult().getFieldErrors().stream()

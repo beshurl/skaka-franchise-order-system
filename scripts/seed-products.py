@@ -275,7 +275,7 @@ def ensure_seed_account():
                 "email": SEED_EMAIL,
                 "password": SEED_PASSWORD,
                 "name": "시딩용본사계정",
-                "role": "HEADQUARTERS_ADMIN",
+                "role": "INSTRUCTOR",
             },
         )
         print(f"시딩 계정 생성됨: {SEED_EMAIL}")

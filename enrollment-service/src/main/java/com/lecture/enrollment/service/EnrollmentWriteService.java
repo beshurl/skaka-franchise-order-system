@@ -58,9 +58,8 @@ public class EnrollmentWriteService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Enrollment rejectOrder(Long orderId, String reason) {
         Enrollment order = findOrThrow(orderId);
-        order.reject();
+        order.reject(reason);
 
-        // enrollments 테이블에 반려 사유 컬럼이 없어 사유는 로그로만 남긴다.
         log.info("[EnrollmentWriteService] 발주 반려 완료 - orderId: {}, reason: {}", orderId, reason);
         return order;
     }

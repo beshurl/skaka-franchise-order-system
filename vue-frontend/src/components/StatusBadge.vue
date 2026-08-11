@@ -7,10 +7,11 @@ import { computed } from 'vue'
 import { orderStatusMeta } from '@/utils/business.js'
 
 const props = defineProps({
-  status: { type: String, required: true }
+  status: { type: String, required: true },
+  metaMap: { type: Object, default: () => orderStatusMeta }
 })
 
-const meta = computed(() => orderStatusMeta[props.status] || { label: props.status, tone: 'info' })
+const meta = computed(() => props.metaMap[props.status] || { label: props.status, tone: 'info' })
 </script>
 
 <style scoped>

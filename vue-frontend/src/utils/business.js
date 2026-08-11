@@ -40,6 +40,13 @@ export const orderStatusMeta = {
   REJECTED: { label: '반려', tone: 'danger', order: 4 }
 }
 
+export const paymentStatusMeta = {
+  PENDING: { label: '정산 대기', tone: 'warning', order: 1 },
+  COMPLETED: { label: '정산 완료', tone: 'success', order: 2 },
+  FAILED: { label: '정산 실패', tone: 'danger', order: 3 },
+  CANCELLED: { label: '취소', tone: 'info', order: 4 }
+}
+
 export function normalizeRole(role) {
   return roleAliases[role] || 'STORE_ADMIN'
 }
@@ -103,8 +110,27 @@ export function normalizeOrder(raw = {}) {
     amount: Number(raw.amount ?? unitPrice * quantity) || 0,
     status,
     statusMeta: orderStatusMeta[status] || orderStatusMeta.REQUESTED,
+    rejectReason: raw.rejectReason || '',
     requestedAt: raw.requestedAt || raw.createdAt,
     updatedAt: raw.updatedAt
+  }
+}
+
+export function normalizePayment(raw = {}, productMap = {}) {
+  const product = productMap[raw.courseId] || null
+  const status = raw.status || 'PENDING'
+
+  return {
+    ...raw,
+    id: raw.paymentId,
+    userId: raw.userId,
+    productId: raw.courseId,
+    productName: product?.name || `상품 #${raw.courseId}`,
+    amount: Number(raw.amount || 0),
+    status,
+    statusMeta: paymentStatusMeta[status] || paymentStatusMeta.PENDING,
+    transactionId: raw.transactionId,
+    createdAt: raw.createdAt
   }
 }
 

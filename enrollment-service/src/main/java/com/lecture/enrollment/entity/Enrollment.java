@@ -41,6 +41,10 @@ public class Enrollment {
     @Builder.Default
     private Status status = Status.REQUESTED;
 
+    /** 본사 반려 사유 (반려된 경우에만 값이 있음) */
+    @Column(name = "reject_reason")
+    private String rejectReason;
+
     @CreatedDate
     @Column(updatable = false)
     private LocalDateTime createdAt;
@@ -68,9 +72,10 @@ public class Enrollment {
     }
 
     /** 본사 반려: REQUESTED 에서만 가능 */
-    public void reject() {
+    public void reject(String reason) {
         requireStatus(Status.REQUESTED, "반려");
         this.status = Status.REJECTED;
+        this.rejectReason = reason;
     }
 
     /** 가맹점 입고 확인: APPROVED 에서만 가능 (중복 입고 방지) */

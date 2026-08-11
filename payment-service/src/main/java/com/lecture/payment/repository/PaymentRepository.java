@@ -10,6 +10,8 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     List<Payment> findByUserId(Long userId);
 
+    List<Payment> findAllByOrderByCreatedAtDesc();
+
     Optional<Payment> findByUserIdAndCourseId(Long userId, Long courseId);
 
     Optional<Payment> findByTransactionId(String transactionId);

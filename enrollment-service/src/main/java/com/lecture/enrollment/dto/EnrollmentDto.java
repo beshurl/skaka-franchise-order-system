@@ -61,6 +61,7 @@ public class EnrollmentDto {
         private Long userId;    // 가맹점 관리자 ID
         private Long courseId;  // 상품 ID
         private Enrollment.Status status;
+        private String rejectReason; // REJECTED 상태일 때만 값이 있음
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
 
@@ -77,6 +78,7 @@ public class EnrollmentDto {
                     .userId(order.getUserId())
                     .courseId(order.getCourseId())
                     .status(order.getStatus())
+                    .rejectReason(order.getRejectReason())
                     .createdAt(order.getCreatedAt())
                     .updatedAt(order.getUpdatedAt())
                     .product(product)
@@ -94,6 +96,7 @@ public class EnrollmentDto {
         private Long userId;
         private Long courseId;
         private Enrollment.Status status;
+        private String rejectReason; // REJECTED 상태일 때만 값이 있음
         private LocalDateTime updatedAt;
 
         public static OrderStatusResponse from(Enrollment order) {
@@ -102,6 +105,7 @@ public class EnrollmentDto {
                     .userId(order.getUserId())
                     .courseId(order.getCourseId())
                     .status(order.getStatus())
+                    .rejectReason(order.getRejectReason())
                     .updatedAt(order.getUpdatedAt())
                     .build();
         }

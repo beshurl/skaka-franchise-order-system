@@ -16,6 +16,9 @@
           <router-link to="/enrollments" :class="{ active: active === 'orders' }">
             <span>{{ auth.isHeadquarters ? '발주 관리' : '내 발주' }}</span>
           </router-link>
+          <router-link to="/payments" :class="{ active: active === 'payments' }">
+            <span>{{ auth.isHeadquarters ? '전체 정산' : '내 정산' }}</span>
+          </router-link>
           <router-link to="/mypage" :class="{ active: active === 'inventory' }">
             <span>{{ auth.isHeadquarters ? '운영 현황' : '재고' }}</span>
           </router-link>
