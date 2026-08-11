@@ -5,6 +5,8 @@ import com.lecture.enrollment.entity.Enrollment;
 import com.lecture.enrollment.service.EnrollmentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -20,12 +22,19 @@ import java.util.List;
  *   POST   /api/enrollments                     발주 요청
  *   GET    /api/enrollments/my                  내 발주 목록
  *   GET    /api/enrollments/{orderId}           발주 상세
- *   PATCH  /api/enrollments/{orderId}/receive   입고 확인
+ *   POST   /api/enrollments/{orderId}/receive   입고 확인
  *
  * 본사(HEADQUARTERS_ADMIN)
  *   GET    /api/enrollments/admin                       전체 발주 목록
- *   PATCH  /api/enrollments/admin/{orderId}/approve     발주 승인
- *   PATCH  /api/enrollments/admin/{orderId}/reject      발주 반려
+ *   POST   /api/enrollments/admin/{orderId}/approve     발주 승인
+ *   POST   /api/enrollments/admin/{orderId}/reject      발주 반려
+ *
+ * 주의: 승인/반려/입고확인은 PATCH가 아니라 POST로 구현되어 있다.
+ * api-gateway(수정 불가, prebuilt)가 브라우저가 보내는 Origin 헤더가 실린
+ * PATCH 요청을 알 수 없는 이유로 항상 403 Forbidden 처리하는 것을 실측으로
+ * 확인했다 (curl로 Origin 헤더 없이 보내면 정상, 브라우저처럼 Origin을 실어
+ * 보내면 Gateway 단계에서 막힘 - enrollment-service 로그에 요청 자체가 안 찍힘).
+ * 반면 POST/GET은 Origin이 있어도 정상 통과하는 것을 확인해서 POST로 통일했다.
  *
  * 내부 호출
  *   GET    /api/enrollments/internal/store/{storeId}/received  입고 완료 상품 ID 목록
@@ -34,6 +43,8 @@ import java.util.List;
 @RequestMapping("/api/enrollments")
 @RequiredArgsConstructor
 public class EnrollmentController {
+
+    private static final Logger log = LoggerFactory.getLogger(EnrollmentController.class);
 
     // Gateway가 X-User-Role에 넣어 보내는 값은 DomainRole이 아니라 JWT의 원본 role 클레임
     // (auth-server가 발급하는 값은 User.Role의 STUDENT/INSTRUCTOR 그대로임) 이라 그 값과 비교해야 한다.
@@ -91,12 +102,10 @@ public class EnrollmentController {
     }
 
     /**
-     * PATCH /api/enrollments/{orderId}/receive - 입고 확인 (가맹점)
+     * POST /api/enrollments/{orderId}/receive - 입고 확인 (가맹점)
      * APPROVED -> RECEIVED 전이 후 상품 재고를 증가시킨다.
      */
-    @RequestMapping(
-            path = "/{orderId}/receive",
-            method = {RequestMethod.PATCH, RequestMethod.PUT})
+    @PostMapping("/{orderId}/receive")
     public ResponseEntity<EnrollmentDto.ApiResponse<EnrollmentDto.OrderStatusResponse>> receiveOrder(
             @PathVariable Long orderId,
             @RequestHeader("X-User-Id") Long storeId,
@@ -125,11 +134,9 @@ public class EnrollmentController {
     }
 
     /**
-     * PATCH /api/enrollments/admin/{orderId}/approve - 발주 승인 (본사)
+     * POST /api/enrollments/admin/{orderId}/approve - 발주 승인 (본사)
      */
-    @RequestMapping(
-            path = "/admin/{orderId}/approve",
-            method = {RequestMethod.PATCH, RequestMethod.PUT})
+    @PostMapping("/admin/{orderId}/approve")
     public ResponseEntity<EnrollmentDto.ApiResponse<EnrollmentDto.OrderStatusResponse>> approveOrder(
             @PathVariable Long orderId,
             @RequestHeader(value = "X-User-Role", required = false) String role) {
@@ -142,11 +149,9 @@ public class EnrollmentController {
     }
 
     /**
-     * PATCH /api/enrollments/admin/{orderId}/reject - 발주 반려 (본사)
+     * POST /api/enrollments/admin/{orderId}/reject - 발주 반려 (본사)
      */
-    @RequestMapping(
-            path = "/admin/{orderId}/reject",
-            method = {RequestMethod.PATCH, RequestMethod.PUT})
+    @PostMapping("/admin/{orderId}/reject")
     public ResponseEntity<EnrollmentDto.ApiResponse<EnrollmentDto.OrderStatusResponse>> rejectOrder(
             @PathVariable Long orderId,
             @Valid @RequestBody EnrollmentDto.RejectRequest request,
@@ -174,13 +179,8 @@ public class EnrollmentController {
      * Gateway 가 전달한 역할 헤더 검증
      */
     private void requireRole(String actualRole, String requiredRole) {
-        String normalizedRole = switch (actualRole == null ? "" : actualRole) {
-            case "STUDENT" -> ROLE_STORE;
-            case "INSTRUCTOR" -> ROLE_HEADQUARTERS;
-            default -> actualRole;
-        };
-
-        if (!requiredRole.equals(normalizedRole)) {
+        log.info("[requireRole] actualRole='{}' requiredRole='{}'", actualRole, requiredRole);
+        if (!requiredRole.equals(actualRole)) {
             throw new SecurityException(requiredRole + " 권한이 필요합니다");
         }
     }

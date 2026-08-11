@@ -173,7 +173,11 @@ async function updateOrder(order, action) {
   updatingId.value = order.id
   try {
     if (action === 'approve') await enrollmentApi.approve(order.id)
-    if (action === 'reject') await enrollmentApi.reject(order.id)
+    if (action === 'reject') {
+      const reason = window.prompt('반려 사유를 입력해 주세요.')
+      if (!reason) { updatingId.value = null; return }
+      await enrollmentApi.reject(order.id, reason)
+    }
     if (action === 'receive') await enrollmentApi.receive(order.id)
     const nextStatus = { approve: 'APPROVED', reject: 'REJECTED', receive: 'RECEIVED' }[action]
     orders.value = orders.value.map((item) => item.id === order.id ? normalizeOrder({ ...item, status: nextStatus }) : item)
