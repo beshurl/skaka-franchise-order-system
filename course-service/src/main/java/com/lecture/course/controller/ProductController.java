@@ -110,8 +110,10 @@ public class ProductController {
      * (Enrollment Service가 발주 확정 시 호출 - URL은 기존 템플릿 계약 그대로 유지)
      */
     @PostMapping("/internal/{id}/enrollment-count")
-    public ResponseEntity<Void> increaseEnrollmentCount(@PathVariable Long id) {
-        productService.increaseEnrollmentCount(id);
+    public ResponseEntity<Void> increaseEnrollmentCount(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "1") int quantity) {
+        productService.increaseEnrollmentCount(id, quantity);
         return ResponseEntity.ok().build();
     }
 

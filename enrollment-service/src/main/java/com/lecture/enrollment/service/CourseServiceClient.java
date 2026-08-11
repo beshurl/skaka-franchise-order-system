@@ -85,19 +85,25 @@ public class CourseServiceClient {
      * 가맹점 재고 수량 증가 (입고 확인 시 호출)
      * - course-service의 기존 enrollment-count 증가 엔드포인트를 재고 증가 용도로 사용한다.
      */
-    public void increaseStock(Long productId) {
+    public void increaseStock(Long productId, int quantity) {
         try {
             webClientBuilder.build()
                     .post()
-                    .uri("http://course-service/api/courses/internal/{id}/enrollment-count", productId)
+                    .uri(uriBuilder -> uriBuilder
+                            .scheme("http")
+                            .host("course-service")
+                            .path("/api/courses/internal/{id}/enrollment-count")
+                            .queryParam("quantity", quantity)
+                            .build(productId))
                     .retrieve()
                     .toBodilessEntity()
                     .block();
 
-            log.info("[CourseServiceClient] 재고 수량 증가 완료 - productId: {}", productId);
+            log.info("[CourseServiceClient] 재고 수량 증가 완료 - productId: {}, quantity: {}",
+                    productId, quantity);
         } catch (Exception e) {
-            log.error("[CourseServiceClient] 재고 수량 증가 실패 - productId: {}, error: {}",
-                    productId, e.getMessage());
+            log.error("[CourseServiceClient] 재고 수량 증가 실패 - productId: {}, quantity: {}, error: {}",
+                    productId, quantity, e.getMessage());
         }
     }
 }

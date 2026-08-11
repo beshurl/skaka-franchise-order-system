@@ -85,9 +85,9 @@ public class ProductService {
      * 상품 관련 수량 값 증가 (Enrollment Service가 발주 확정 시 호출)
      */
     @Transactional
-    public void increaseEnrollmentCount(Long productId) {
+    public void increaseEnrollmentCount(Long productId, int quantity) {
         Product product = findProductById(productId);
-        product.increaseEnrollmentCount();
+        product.increaseEnrollmentCount(quantity);
     }
 
     /**

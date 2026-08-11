@@ -30,6 +30,7 @@ public class KafkaEvent {
      *   enrollmentId : 발주 ID
      *   userId       : 가맹점 관리자 ID
      *   courseId     : 상품 ID
+     *   quantity     : 입고 수량
      */
     @Getter
     @NoArgsConstructor
@@ -39,5 +40,6 @@ public class KafkaEvent {
         private Long enrollmentId;
         private Long userId;
         private Long courseId;
+        private Integer quantity;
     }
 }

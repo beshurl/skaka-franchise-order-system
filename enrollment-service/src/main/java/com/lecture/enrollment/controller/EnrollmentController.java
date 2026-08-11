@@ -64,7 +64,11 @@ public class EnrollmentController {
 
         requireRole(role, ROLE_STORE);
 
-        EnrollmentDto.OrderResponse response = enrollmentService.createOrder(storeId, request.getCourseId());
+        EnrollmentDto.OrderResponse response = enrollmentService.createOrder(
+                storeId,
+                request.getCourseId(),
+                request.getQuantity()
+        );
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(EnrollmentDto.ApiResponse.success("발주가 접수되었습니다", response));
     }

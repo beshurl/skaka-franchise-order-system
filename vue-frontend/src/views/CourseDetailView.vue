@@ -38,15 +38,53 @@
 
         <dl class="product-specs">
           <div><dt>상품 ID</dt><dd>#{{ product.id }}</dd></div>
-          <div><dt>발주 단위</dt><dd>{{ product.orderUnit }}건</dd></div>
+          <div><dt>최소 발주 수량</dt><dd>{{ product.orderUnit }}개</dd></div>
           <div><dt>현재 재고</dt><dd>{{ product.inventory.toLocaleString() }}</dd></div>
           <div><dt>상품 상태</dt><dd>{{ product.status === 'ACTIVE' ? '활성' : '중지' }}</dd></div>
         </dl>
 
         <template v-if="auth.isStore">
-          <div v-if="currentOrder" class="current-order">
-            <span>현재 발주 상태</span>
-            <StatusBadge :status="currentOrder.status" />
+          <div v-if="currentOrder" class="current-order-summary">
+            <div class="current-order">
+              <span>{{ canCreateOrder ? '최근 발주 상태' : '현재 발주 상태' }}</span>
+              <StatusBadge :status="currentOrder.status" />
+            </div>
+            <div class="current-order">
+              <span>발주 수량</span>
+              <strong>{{ currentOrder.quantity.toLocaleString() }}개</strong>
+            </div>
+          </div>
+          <div v-if="canCreateOrder" class="quantity-section">
+            <label for="order-quantity">발주 수량</label>
+            <div class="quantity-stepper">
+              <button
+                type="button"
+                aria-label="발주 수량 1개 줄이기"
+                :disabled="orderQuantity <= MIN_ORDER_QUANTITY"
+                @click="changeQuantity(-1)"
+              >−</button>
+              <input
+                id="order-quantity"
+                v-model.number="orderQuantity"
+                type="number"
+                :min="MIN_ORDER_QUANTITY"
+                :max="MAX_ORDER_QUANTITY"
+                step="1"
+                inputmode="numeric"
+                aria-describedby="order-quantity-help"
+                @blur="sanitizeQuantity"
+              />
+              <button
+                type="button"
+                aria-label="발주 수량 1개 늘리기"
+                :disabled="orderQuantity >= MAX_ORDER_QUANTITY"
+                @click="changeQuantity(1)"
+              >+</button>
+            </div>
+            <div id="order-quantity-help" class="quantity-total">
+              <span>예상 정산 금액</span>
+              <strong>{{ formatMoney(estimatedAmount) }}</strong>
+            </div>
           </div>
           <button
             type="button"
@@ -56,7 +94,10 @@
           >
             {{ actionLoading ? '처리 중' : actionLabel }}
           </button>
-          <p class="panel-helper">입고 완료 전까지 재고 수량은 증가하지 않습니다.</p>
+          <p v-if="canCreateOrder && currentOrder" class="panel-helper">
+            완료된 발주는 이력으로 유지되며 같은 상품을 추가 발주할 수 있습니다.
+          </p>
+          <p v-else class="panel-helper">입고 완료 전까지 재고 수량은 증가하지 않습니다.</p>
         </template>
 
         <template v-else>
@@ -98,19 +139,46 @@ const route = useRoute()
 const auth = useAuthStore()
 const courseStore = useCourseStore()
 const currentOrder = ref(null)
+const MIN_ORDER_QUANTITY = 1
+const MAX_ORDER_QUANTITY = 999
+const orderQuantity = ref(MIN_ORDER_QUANTITY)
 const actionLoading = ref(false)
 const actionError = ref('')
 const actionSuccess = ref('')
 
 const product = computed(() => courseStore.selectedProduct)
+const isQuantityValid = computed(() => Number.isInteger(Number(orderQuantity.value))
+  && Number(orderQuantity.value) >= MIN_ORDER_QUANTITY
+  && Number(orderQuantity.value) <= MAX_ORDER_QUANTITY)
+const estimatedAmount = computed(() => (product.value?.supplyPrice || 0) * (Number(orderQuantity.value) || 0))
+const canCreateOrder = computed(() => !currentOrder.value
+  || ['RECEIVED', 'REJECTED'].includes(currentOrder.value.status))
 const actionLabel = computed(() => {
   if (!currentOrder.value) return '발주 요청'
   if (currentOrder.value.status === 'REQUESTED') return '본사 승인 대기 중'
   if (currentOrder.value.status === 'APPROVED') return '입고 확인'
-  if (currentOrder.value.status === 'RECEIVED') return '입고 완료'
-  return '반려된 발주'
+  return '추가 발주 요청'
 })
-const actionDisabled = computed(() => actionLoading.value || product.value?.status !== 'ACTIVE' || ['REQUESTED', 'RECEIVED', 'REJECTED'].includes(currentOrder.value?.status))
+const actionDisabled = computed(() => {
+  if (actionLoading.value || product.value?.status !== 'ACTIVE') return true
+  if (canCreateOrder.value) return !isQuantityValid.value
+  return currentOrder.value?.status !== 'APPROVED'
+})
+
+function sanitizeQuantity() {
+  const quantity = Math.trunc(Number(orderQuantity.value))
+  orderQuantity.value = Number.isFinite(quantity)
+    ? Math.min(MAX_ORDER_QUANTITY, Math.max(MIN_ORDER_QUANTITY, quantity))
+    : MIN_ORDER_QUANTITY
+}
+
+function changeQuantity(delta) {
+  sanitizeQuantity()
+  orderQuantity.value = Math.min(
+    MAX_ORDER_QUANTITY,
+    Math.max(MIN_ORDER_QUANTITY, orderQuantity.value + delta)
+  )
+}
 
 async function loadOrderStatus() {
   if (!auth.isStore || !product.value?.id) return
@@ -130,10 +198,11 @@ async function handleStoreAction() {
   actionLoading.value = true
 
   try {
-    if (!currentOrder.value) {
-      const response = await enrollmentApi.createOrder(product.value.id)
+    if (canCreateOrder.value) {
+      sanitizeQuantity()
+      const response = await enrollmentApi.createOrder(product.value.id, orderQuantity.value)
       currentOrder.value = normalizeOrder(response.data?.data ?? response.data)
-      actionSuccess.value = '발주 요청이 접수되었습니다.'
+      actionSuccess.value = `${orderQuantity.value.toLocaleString()}개 발주 요청이 접수되었습니다.`
     } else if (currentOrder.value.status === 'APPROVED') {
       await enrollmentApi.receive(currentOrder.value.id)
       currentOrder.value = { ...currentOrder.value, status: 'RECEIVED' }
@@ -325,6 +394,106 @@ onMounted(async () => {
 
 .current-order {
   margin-bottom: 14px;
+}
+
+.current-order-summary {
+  margin-bottom: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.current-order-summary .current-order {
+  margin-bottom: 0;
+}
+
+.current-order strong {
+  font-size: 12px;
+}
+
+.quantity-section {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+}
+
+.quantity-section > label {
+  display: block;
+  margin-bottom: 9px;
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.quantity-stepper {
+  height: 42px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+.quantity-stepper button,
+.quantity-stepper input {
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+}
+
+.quantity-stepper button {
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.quantity-stepper button:disabled {
+  cursor: not-allowed;
+  color: var(--color-muted);
+  opacity: 0.45;
+}
+
+.quantity-stepper input {
+  min-width: 0;
+  border-right: 1px solid var(--color-border);
+  border-left: 1px solid var(--color-border);
+  outline: none;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 750;
+  text-align: center;
+  appearance: textfield;
+}
+
+.quantity-stepper input::-webkit-inner-spin-button,
+.quantity-stepper input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.quantity-stepper:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgb(44 101 230 / 10%);
+}
+
+.quantity-total {
+  margin-top: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quantity-total span {
+  color: var(--color-muted);
+  font-size: 10px;
+}
+
+.quantity-total strong {
+  color: var(--color-accent-strong);
+  font-size: 13px;
 }
 
 .order-button {

@@ -29,6 +29,11 @@ import java.util.stream.Collectors;
 @Transactional(readOnly = true)
 public class EnrollmentService {
 
+    private static final List<Enrollment.Status> IN_PROGRESS_STATUSES = List.of(
+            Enrollment.Status.REQUESTED,
+            Enrollment.Status.APPROVED
+    );
+
     private final EnrollmentRepository enrollmentRepository;
     private final CourseServiceClient courseServiceClient;
     private final PaymentServiceClient paymentServiceClient;
@@ -38,21 +43,29 @@ public class EnrollmentService {
     /**
      * 발주 요청 (가맹점)
      * 1. 상품 존재 확인
-     * 2. 동일 상품 중복 발주 확인
+     * 2. 동일 상품에 처리 중인 발주가 있는지 확인
      * 3. REQUESTED 상태로 저장 (독립 트랜잭션 커밋)
      */
-    public EnrollmentDto.OrderResponse createOrder(Long storeId, Long productId) {
+    public EnrollmentDto.OrderResponse createOrder(Long storeId, Long productId, Integer requestedQuantity) {
+        int quantity = requestedQuantity == null ? 1 : requestedQuantity;
+        validateQuantity(quantity);
+
         if (!courseServiceClient.existsProduct(productId)) {
             throw new IllegalArgumentException("존재하지 않는 상품입니다: " + productId);
         }
 
-        if (enrollmentRepository.existsByUserIdAndCourseId(storeId, productId)) {
-            throw new IllegalStateException("이미 발주한 상품입니다: " + productId);
+        if (enrollmentRepository.existsByUserIdAndCourseIdAndStatusIn(
+                storeId,
+                productId,
+                IN_PROGRESS_STATUSES
+        )) {
+            throw new IllegalStateException("이미 처리 중인 발주가 있는 상품입니다: " + productId);
         }
 
-        Enrollment order = enrollmentWriteService.createRequestedOrder(storeId, productId);
+        Enrollment order = enrollmentWriteService.createRequestedOrder(storeId, productId, quantity);
 
-        log.info("[EnrollmentService] 발주 요청 접수 - orderId: {}, 상태: {}", order.getId(), order.getStatus());
+        log.info("[EnrollmentService] 발주 요청 접수 - orderId: {}, quantity: {}, 상태: {}",
+                order.getId(), quantity, order.getStatus());
         return EnrollmentDto.OrderResponse.from(order);
     }
 
@@ -65,13 +78,15 @@ public class EnrollmentService {
         Enrollment order = enrollmentWriteService.approveOrder(orderId);
 
         BigDecimal supplyPrice = getSupplyPrice(order.getCourseId());
+        BigDecimal settlementAmount = supplyPrice.multiply(BigDecimal.valueOf(order.getQuantity()));
         try {
-            paymentServiceClient.requestSettlement(order.getUserId(), order.getCourseId(), supplyPrice);
+            paymentServiceClient.requestSettlement(order.getUserId(), order.getCourseId(), settlementAmount);
         } catch (RuntimeException e) {
             log.error("[EnrollmentService] 정산 요청 실패 - orderId: {}, error: {}", orderId, e.getMessage());
         }
 
-        log.info("[EnrollmentService] 발주 승인 처리 완료 - orderId: {}, 정산금액: {}", orderId, supplyPrice);
+        log.info("[EnrollmentService] 발주 승인 처리 완료 - orderId: {}, quantity: {}, 정산금액: {}",
+                orderId, order.getQuantity(), settlementAmount);
         return EnrollmentDto.OrderStatusResponse.from(order);
     }
 
@@ -94,13 +109,14 @@ public class EnrollmentService {
     public EnrollmentDto.OrderStatusResponse receiveOrder(Long orderId, Long storeId) {
         Enrollment order = enrollmentWriteService.receiveOrder(orderId, storeId);
 
-        courseServiceClient.increaseStock(order.getCourseId());
+        courseServiceClient.increaseStock(order.getCourseId(), order.getQuantity());
 
         kafkaProducer.publishOrderReceived(
                 KafkaEvent.OrderReceivedEvent.builder()
                         .enrollmentId(order.getId())
                         .userId(order.getUserId())
                         .courseId(order.getCourseId())
+                        .quantity(order.getQuantity())
                         .build()
         );
 
@@ -113,12 +129,12 @@ public class EnrollmentService {
      * - enrollments 테이블에 정산 상태 컬럼이 없어 상태 정합성 검증과 로깅만 수행한다.
      */
     public void confirmSettlement(Long storeId, Long productId) {
-        Enrollment order = enrollmentRepository.findByUserIdAndCourseId(storeId, productId)
+        Enrollment order = enrollmentRepository.findFirstByUserIdAndCourseIdOrderByIdDesc(storeId, productId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "발주 정보를 찾을 수 없습니다 - storeId: " + storeId + ", productId: " + productId));
 
         if (order.getStatus() != Enrollment.Status.APPROVED) {
-            log.warn("[EnrollmentService] 정산 완료 이벤트와 발주 상태 불일치 - orderId: {}, 상태: {}",
+            log.warn("[EnrollmentService] 정산 완료 이벤트와 최신 발주 상태 불일치 - orderId: {}, 상태: {}",
                     order.getId(), order.getStatus());
             return;
         }
@@ -230,6 +246,12 @@ public class EnrollmentService {
             throw new IllegalStateException("상품 공급가를 확인할 수 없습니다: " + productId);
         }
         return supplyPrice;
+    }
+
+    private void validateQuantity(int quantity) {
+        if (quantity < 1 || quantity > 999) {
+            throw new IllegalArgumentException("발주 수량은 1개 이상 999개 이하여야 합니다");
+        }
     }
 
     private String normalizeCategory(String category) {

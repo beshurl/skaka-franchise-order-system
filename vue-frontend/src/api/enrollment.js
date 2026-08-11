@@ -13,8 +13,8 @@ export const enrollmentApi = {
     return api.get('/api/enrollments/admin', { params: { storeId } })
   },
 
-  createOrder(productId) {
-    return api.post('/api/enrollments', { courseId: productId })
+  createOrder(productId, quantity = 1) {
+    return api.post('/api/enrollments', { courseId: productId, quantity })
   },
 
   // api-gateway가 Origin 헤더가 실린 PATCH 요청을 항상 403 처리해서 POST로 통일
@@ -35,7 +35,7 @@ export const enrollmentApi = {
     return this.getMyOrders()
   },
 
-  enroll(courseId) {
-    return this.createOrder(courseId)
+  enroll(courseId, quantity = 1) {
+    return this.createOrder(courseId, quantity)
   }
 }

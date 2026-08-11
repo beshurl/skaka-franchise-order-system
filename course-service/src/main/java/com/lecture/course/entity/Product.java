@@ -89,8 +89,11 @@ public class Product {
         ACTIVE, INACTIVE
     }
 
-    public void increaseEnrollmentCount() {
-        this.enrollmentCount++;
+    public void increaseEnrollmentCount(int quantity) {
+        if (quantity < 1 || quantity > 999) {
+            throw new IllegalArgumentException("입고 수량은 1개 이상 999개 이하여야 합니다");
+        }
+        this.enrollmentCount += quantity;
     }
 
     public void update(String title, String description, Category category,

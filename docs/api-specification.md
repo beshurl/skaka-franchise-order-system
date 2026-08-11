@@ -1,17 +1,17 @@
 # B2B 편의점 본사-가맹점 발주 관리 시스템 API 명세서
 
-버전: v2.0 (실제 구현 기준)
+버전: v2.2 (완료·반려 후 동일 상품 재발주 지원)
 
 이 문서는 v1.0 Draft(설계 초안) 이후 실제로 구현/배포된 코드를 기준으로 다시 작성했다. 서비스 이름, 경로, 요청/응답 필드는 모두 현재 저장소(`skaka-franchise-order-system`) 코드와 일치한다. 초안과 달라진 부분은 각 절에 표시했다.
 
 ## 0. v1.0 초안과 달라진 점 요약
 
-| 항목 | v1.0 초안 | 실제 구현(v2.0) |
+| 항목 | v1.0 초안 | 실제 구현(v2.2) |
 |---|---|---|
 | 서비스 이름 | User/Product/Order/Inventory Service | `user-service`, `course-service`(Product), `enrollment-service`(Order), `payment-service`, `recommend-service` |
 | 외부 경로 | `/api/products`, `/api/orders`, `/api/admin/orders`, `/api/inventories` | `/api/courses`, `/api/enrollments`, `/api/enrollments/admin`, 별도 재고 API 없음(`courses.enrollmentCount` 필드로 대체) |
 | 상태 흐름 | `REQUESTED → APPROVED → SHIPPING → DELIVERED → RECEIVED` | `REQUESTED → APPROVED → RECEIVED` (`SHIPPING`/`DELIVERED` 없음) |
-| 발주 단위 | 여러 상품을 담는 장바구니형 `items[]` | 상품 1개당 발주 1건 (`courseId` 단건, 수량 개념 없음) |
+| 발주 단위 | 여러 상품을 담는 장바구니형 `items[]` | 상품 1개당 발주 1건 (`courseId` 단건)이며 `quantity` 1~999 지원 |
 | 승인/반려/입고 HTTP 메서드 | `PATCH` | `POST` (API Gateway가 `Origin` 헤더가 실린 `PATCH`를 항상 403 처리하는 버그가 있어 우회) |
 | 상품 수정 메서드 | `PATCH` | `PUT` (같은 이유로 `PUT` 사용, `PATCH`도 하위 호환으로 같이 받음) |
 | 결제/정산 | "B2B MVP에서는 제외" | `payment-service`로 실제 구현됨. 발주 **승인 시점**에 자동 정산 처리 |
@@ -55,7 +55,7 @@ REQUESTED -> APPROVED -> RECEIVED
 | `RECEIVED` | 없음 | - | - |
 | `REJECTED` | 없음 | - | - |
 
-허용되지 않은 상태 전이는 `409 Conflict`로 응답한다. 입고(재고 반영)는 `APPROVED` 상태에서 한 번만 가능하고, 이미 `RECEIVED`인 발주는 다시 처리되지 않는다 (`enrollments` 테이블의 `(user_id, course_id)` UNIQUE 제약과 상태 검증으로 중복을 막는다).
+허용되지 않은 상태 전이는 `409 Conflict`로 응답한다. 입고(재고 반영)는 각 발주의 `APPROVED` 상태에서 한 번만 가능하고, 이미 `RECEIVED`인 발주는 다시 처리되지 않는다. 완료된 발주는 이력으로 남으며 같은 상품을 새로 발주할 수 있다.
 
 **본사가 발주를 승인하는 순간 정산(결제)이 자동으로 함께 처리된다.** 자세한 내용은 7절 참고.
 
@@ -324,7 +324,7 @@ PATCH /api/courses/{id}   (하위 호환으로 같이 받지만 실제로 쓰지
 ```http
 GET  /api/courses/internal/exists/{id}              상품 존재 여부 (Boolean)
 GET  /api/courses/internal/{id}                      상품 상세
-POST /api/courses/internal/{id}/enrollment-count     재고 +1 (입고 확인 시 호출)
+POST /api/courses/internal/{id}/enrollment-count?quantity=30  재고 +quantity (입고 확인 시 호출)
 GET  /api/courses/internal/recommend                 추천 서비스용 후보 조회
 ```
 
@@ -332,7 +332,7 @@ GET  /api/courses/internal/recommend                 추천 서비스용 후보 
 
 Base path: `/api/enrollments`
 
-발주는 **상품 1개당 1건**이다. v1.0 초안에 있던 `items[]` 장바구니형 다건 발주, `quantity`, `unitPrice`, `totalAmount` 스냅샷 개념은 구현되지 않았다. 동일 가맹점이 같은 상품을 두 번 발주할 수 없다 (`(user_id, course_id)` UNIQUE).
+발주는 요청마다 **상품 1종**과 `quantity` 1~999개를 지정한다. 같은 상품의 기존 발주가 `RECEIVED` 또는 `REJECTED`로 종료되면 새 발주를 만들 수 있으며, `REQUESTED` 또는 `APPROVED` 발주가 진행 중일 때만 중복 요청을 차단한다. v1.0 초안의 `items[]` 장바구니형 다건 발주와 `unitPrice`, `totalAmount` 가격 스냅샷은 구현되지 않았다.
 
 ### 6.1 발주 요청 (가맹점)
 
@@ -345,10 +345,12 @@ POST /api/enrollments
 Request:
 
 ```json
-{ "courseId": 3 }
+{ "courseId": 3, "quantity": 30 }
 ```
 
-처리 규칙: ① 상품 존재 확인(course-service 내부 호출) → ② 동일 상품 중복 발주 여부 확인 → ③ `REQUESTED` 상태로 저장. **이 시점에는 결제/정산이 발생하지 않는다.**
+`quantity`를 생략한 기존 요청은 하위 호환을 위해 1개로 처리한다. 허용 범위는 1~999이다.
+
+처리 규칙: ① 상품 존재 확인(course-service 내부 호출) → ② 동일 상품의 진행 중 발주(`REQUESTED`, `APPROVED`) 여부 확인 → ③ 진행 중 발주가 없으면 새 `REQUESTED` 발주 저장. **이 시점에는 결제/정산이 발생하지 않는다.**
 
 Response `201 Created`:
 
@@ -360,6 +362,7 @@ Response `201 Created`:
     "id": 17,
     "userId": 4,
     "courseId": 3,
+    "quantity": 30,
     "status": "REQUESTED",
     "rejectReason": null,
     "createdAt": "2026-08-11T04:32:21",
@@ -393,7 +396,7 @@ POST /api/enrollments/{orderId}/receive
 
 권한: `STUDENT`(가맹점), 본인 발주만. 조건: 현재 상태가 `APPROVED`.
 
-처리 규칙: `APPROVED → RECEIVED` 전이 → course-service에 재고 +1 요청 → `order.received` Kafka 이벤트 발행.
+처리 규칙: `APPROVED → RECEIVED` 전이 → course-service에 재고 `+quantity` 요청 → 수량을 포함한 `order.received` Kafka 이벤트 발행.
 
 ### 6.5 전체 발주 목록 조회 (본사)
 
@@ -466,13 +469,13 @@ v1.0 초안은 "결제는 B2B MVP에서 제외"라고 명시했지만, 실제로
 가맹점이 발주 요청 (POST /api/enrollments)           -> 결제 없음, 상태 REQUESTED
 본사가 발주 승인 (POST /api/enrollments/admin/{id}/approve)
   -> enrollment-service가 course-service에서 현재 공급가 조회
-  -> enrollment-service가 payment-service에 내부 호출로 정산 요청
+  -> enrollment-service가 공급가 × 발주 수량을 계산해 payment-service에 정산 요청
   -> payment-service가 Payment 레코드 생성, 즉시 COMPLETED 처리
   -> payment.completed Kafka 이벤트 발행 -> enrollment-service가 구독해 정합성 로그만 남김
 가맹점이 입고 확인 (POST /api/enrollments/{id}/receive) -> 재고만 증가, 정산과 무관
 ```
 
-즉 **발주 "요청" 시점이 아니라 "승인" 시점에 결제가 들어간다.** 반려된 발주는 정산이 아예 발생하지 않는다. 정산 금액은 발주 시점 가격이 아니라 **승인 시점의 상품 현재 공급가**를 기준으로 계산된다 (v1.0 초안의 "발주 당시 가격 스냅샷 보존" 원칙과 다름 — 알려진 차이, 12.2절).
+즉 **발주 "요청" 시점이 아니라 "승인" 시점에 결제가 들어간다.** 반려된 발주는 정산이 아예 발생하지 않는다. 정산 금액은 **승인 시점의 상품 현재 공급가 × 발주 수량**으로 계산된다 (v1.0 초안의 "발주 당시 가격 스냅샷 보존" 원칙과 다름 — 알려진 차이, 12.2절).
 
 ### 7.2 정산 단건 조회
 
@@ -579,7 +582,7 @@ Response:
 |---|---|---|---|
 | Enrollment Service | Course Service | `GET /api/courses/internal/exists/{id}` | 발주 생성 전 상품 존재 확인 |
 | Enrollment Service | Course Service | `GET /api/courses/internal/{id}` | 발주 목록/상세에 상품 정보 첨부, 승인 시 정산 금액(공급가) 조회 |
-| Enrollment Service | Course Service | `POST /api/courses/internal/{id}/enrollment-count` | 입고 확인 시 재고 +1 |
+| Enrollment Service | Course Service | `POST /api/courses/internal/{id}/enrollment-count?quantity={quantity}` | 입고 확인 시 재고 +발주 수량 |
 | Enrollment Service | Payment Service | `POST /api/payments/internal/request` | 발주 승인 시 정산 요청 |
 | Recommend Service | Course Service | `GET /api/courses/internal/recommend` | 추천 후보 조회 |
 | Recommend Service | Enrollment Service | `GET /api/enrollments/internal/store/{storeId}/received` | 입고 이력 조회 |
@@ -611,11 +614,12 @@ Response:
 | `id` | `Long` | 발주 ID |
 | `userId` | `Long` | 가맹점 관리자 ID |
 | `courseId` | `Long` | 상품 ID |
+| `quantity` | `Integer` | 발주 수량(1~999, 기본값 1) |
 | `status` | `Enum` | `REQUESTED,APPROVED,REJECTED,RECEIVED` |
 | `rejectReason` | `String?` | 반려 사유 (반려된 경우에만 값 존재) |
 | `createdAt` / `updatedAt` | `DateTime` | |
 
-`(userId, courseId)` UNIQUE — 상품별 수량 개념이 없어 재발주하려면 기존 건이 `REJECTED`든 `RECEIVED`든 새 발주를 만들 수 없다 (알려진 제약, 12.1절).
+`(userId, courseId)`에는 일반 조회 인덱스만 사용한다. 동일 상품의 완료·반려 발주는 여러 건 이력으로 저장할 수 있고, 애플리케이션이 `REQUESTED`·`APPROVED` 상태의 동시 중복 발주를 차단한다.
 
 ### 10.3 Payment (`payments` 테이블)
 
@@ -624,7 +628,7 @@ Response:
 | `id` | `Long` | 정산 ID |
 | `userId` | `Long` | 가맹점 관리자 ID |
 | `courseId` | `Long` | 상품 ID |
-| `amount` | `BigDecimal` | 정산 금액(승인 시점 공급가) |
+| `amount` | `BigDecimal` | 정산 금액(승인 시점 공급가 × 발주 수량) |
 | `status` | `Enum` | `PENDING,COMPLETED,FAILED,CANCELLED` |
 | `transactionId` | `String` | 모의 PG 거래 ID (UUID) |
 | `createdAt` / `updatedAt` | `DateTime` | |
@@ -633,14 +637,14 @@ Response:
 
 ```text
 1. STUDENT(가맹점)이 GET /api/courses로 상품 확인
-2. STUDENT가 POST /api/enrollments로 발주 요청 -> REQUESTED (정산 없음)
+2. STUDENT가 POST /api/enrollments { courseId, quantity }로 발주 요청 -> REQUESTED (정산 없음)
 3. INSTRUCTOR(본사)가 GET /api/enrollments/admin으로 요청 확인
 4-a. POST /api/enrollments/admin/{id}/approve
      -> APPROVED, payment-service에 정산 요청 -> Payment COMPLETED 자동 생성
 4-b. POST /api/enrollments/admin/{id}/reject { "reason": "..." }
      -> REJECTED, rejectReason 저장 (정산 없음)
 5. STUDENT가 POST /api/enrollments/{id}/receive (APPROVED 건만)
-   -> RECEIVED, courses.enrollmentCount +1
+   -> RECEIVED, courses.enrollmentCount +quantity
 6. STUDENT/INSTRUCTOR가 GET /api/payments/user/{id} 또는 /api/payments/admin으로 정산 내역 확인
 7. STUDENT가 GET /api/recommend/{storeId}로 다음 발주 추천 확인
 ```
@@ -649,9 +653,9 @@ Response:
 
 기획서/발표 자료에는 "왜 이렇게 만들었는지"를 설명할 때 이 절을 근거로 쓰면 된다.
 
-### 12.1 다건 발주(장바구니)와 수량 미지원
+### 12.1 다건 발주(장바구니) 미지원
 
-v1.0 초안은 여러 상품을 한 번에 담아 발주하는 `items[]` 구조를 가정했지만, 실제 구현은 **상품 1개당 발주 1건, 수량 개념 없음**이다. 여러 개 발주하려면 같은 상품을 여러 번 발주해야 하는데, `(userId, courseId)` UNIQUE 제약 때문에 **이전 발주가 완료(`RECEIVED`)되기 전에는 동일 상품을 재발주할 수 없다.** 데모/시연 범위를 벗어난 정식 기능으로 확장하려면 수량 필드 추가 또는 UNIQUE 제약 조정이 필요하다.
+v1.0 초안은 여러 상품을 한 번에 담는 `items[]` 구조를 가정했지만, 실제 구현은 **요청 1건당 상품 1종**이고 `quantity`로 1~999개를 지정한다. 이전 발주가 완료(`RECEIVED`)되거나 반려(`REJECTED`)되면 동일 상품을 다시 발주할 수 있지만, 여러 상품을 한 번에 묶는 장바구니형 발주는 지원하지 않는다.
 
 ### 12.2 정산 금액이 발주 시점이 아닌 승인 시점 가격 기준
 
@@ -675,13 +679,13 @@ API Gateway(프리빌트, 소스 없음)가 `Origin` 헤더가 포함된 `PATCH`
 
 ## 13. 제외 범위
 
-이번 API v2.0에서도 다음은 다루지 않는다.
+이번 API v2.2에서도 다음은 다루지 않는다.
 
 - 실제 PG 연동, 환불, 세금계산서, 월 단위 배치 정산/이체
 - 배송 상태 추적(`SHIPPING`/`DELIVERED`), 운송장, 배송 위치
 - 부분 배송 및 부분 입고
 - 발주 수정 및 발주 취소
-- 다건(장바구니) 발주, 발주 수량
+- 다건(장바구니) 발주
 - 내부 API(서비스 간 호출)의 별도 인증(Client Credentials 등)
 - 다중 창고 및 복수 배송지
 - 재고 실사, 판매 이력(발주/입고 외의 재고 차감)

@@ -1,6 +1,8 @@
 package com.lecture.enrollment.dto;
 
 import com.lecture.enrollment.entity.Enrollment;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -25,6 +27,12 @@ public class EnrollmentDto {
     public static class OrderRequest {
         @NotNull(message = "상품 ID는 필수입니다")
         private Long courseId;
+
+        /** 기존 클라이언트가 생략하면 1개로 처리한다. */
+        @Min(value = 1, message = "발주 수량은 1개 이상이어야 합니다")
+        @Max(value = 999, message = "발주 수량은 999개 이하여야 합니다")
+        @Builder.Default
+        private Integer quantity = 1;
     }
 
     // 발주 반려 요청
@@ -60,6 +68,7 @@ public class EnrollmentDto {
         private Long id;
         private Long userId;    // 가맹점 관리자 ID
         private Long courseId;  // 상품 ID
+        private Integer quantity; // 발주 수량
         private Enrollment.Status status;
         private String rejectReason; // REJECTED 상태일 때만 값이 있음
         private LocalDateTime createdAt;
@@ -77,6 +86,7 @@ public class EnrollmentDto {
                     .id(order.getId())
                     .userId(order.getUserId())
                     .courseId(order.getCourseId())
+                    .quantity(order.getQuantity())
                     .status(order.getStatus())
                     .rejectReason(order.getRejectReason())
                     .createdAt(order.getCreatedAt())
@@ -95,6 +105,7 @@ public class EnrollmentDto {
         private Long orderId;
         private Long userId;
         private Long courseId;
+        private Integer quantity;
         private Enrollment.Status status;
         private String rejectReason; // REJECTED 상태일 때만 값이 있음
         private LocalDateTime updatedAt;
@@ -104,6 +115,7 @@ public class EnrollmentDto {
                     .orderId(order.getId())
                     .userId(order.getUserId())
                     .courseId(order.getCourseId())
+                    .quantity(order.getQuantity())
                     .status(order.getStatus())
                     .rejectReason(order.getRejectReason())
                     .updatedAt(order.getUpdatedAt())

@@ -24,17 +24,18 @@ public class EnrollmentWriteService {
      * 발주 요청 생성 (REQUESTED) - 독립 트랜잭션
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public Enrollment createRequestedOrder(Long storeId, Long productId) {
+    public Enrollment createRequestedOrder(Long storeId, Long productId, int quantity) {
 
         Enrollment order = enrollmentRepository.save(
                 Enrollment.builder()
                         .userId(storeId)
                         .courseId(productId)
+                        .quantity(quantity)
                         .build()
         );
 
-        log.info("[EnrollmentWriteService] 발주 요청 생성 완료 - orderId: {}, storeId: {}, productId: {}",
-                order.getId(), storeId, productId);
+        log.info("[EnrollmentWriteService] 발주 요청 생성 완료 - orderId: {}, storeId: {}, productId: {}, quantity: {}",
+                order.getId(), storeId, productId, quantity);
 
         return order;
     }

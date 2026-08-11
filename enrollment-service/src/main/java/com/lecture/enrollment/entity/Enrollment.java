@@ -13,10 +13,10 @@ import java.time.LocalDateTime;
  * - 테이블명과 컬럼명은 기존 스켈레톤을 그대로 사용한다.
  *   user_id   : 발주한 가맹점 관리자 ID
  *   course_id : 발주 대상 상품 ID
+ *   quantity  : 발주 수량
  */
 @Entity
-@Table(name = "enrollments",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"user_id", "course_id"}))
+@Table(name = "enrollments")
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
@@ -35,6 +35,11 @@ public class Enrollment {
     /** 상품 ID */
     @Column(name = "course_id", nullable = false)
     private Long courseId;
+
+    /** 발주 수량 */
+    @Column(nullable = false, columnDefinition = "INT DEFAULT 1")
+    @Builder.Default
+    private Integer quantity = 1;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
