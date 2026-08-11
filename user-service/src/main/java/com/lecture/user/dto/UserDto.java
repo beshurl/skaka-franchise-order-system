@@ -30,8 +30,8 @@ public class UserDto {
         @NotBlank(message = "이름은 필수입니다")
         private String name;
 
-        // private User.Role role; // STUDENT or INSTRUCTOR
-        private DomainRole role;   // User.Role → DomainRole
+        private User.Role role; // STUDENT or INSTRUCTOR
+        // private DomainRole role;   // User.Role → DomainRole
     }
 
     // 사용자 정보 응답
@@ -43,8 +43,8 @@ public class UserDto {
         private Long id;
         private String email;
         private String name;
-        // private User.Role role;
-        private DomainRole role;   // User.Role → DomainRole
+        private User.Role role;
+        // private DomainRole role;   // User.Role → DomainRole
         private LocalDateTime createdAt;
 
         public static UserResponse from(User user) {
@@ -52,7 +52,7 @@ public class UserDto {
                     .id(user.getId())
                     .email(user.getEmail())
                     .name(user.getName())
-                    .role(DomainRole.from(user.getRole()))
+                    .role(user.getRole())
                     .createdAt(user.getCreatedAt())
                     .build();
         }
